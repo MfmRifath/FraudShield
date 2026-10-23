@@ -1,0 +1,15 @@
+# Cost matrix for the decision policy (training/costs.py). Amounts are in transaction currency.
+# These are ASSUMPTIONS, not measured business costs: evaluate.py reports a sensitivity sweep.
+#
+# With p = calibrated P(fraud) and A = transaction amount, the expected cost of each decision is
+#   approve: p * (A + chargeback_fee)                        fraud slips through
+#   block:   (1 - p) * (margin_rate * A + churn_penalty)     a legit customer is declined
+#   review:  analyst_cost + (1 - p) * review_friction        reviews are assumed to catch fraud
+# The policy picks the cheapest decision per transaction; at most review_capacity_per_day
+# transactions per UTC day are sent to review (those with the largest saving from review).
+chargeback_fee: 25.0
+margin_rate: 0.03
+churn_penalty: 10.0
+analyst_cost: 4.0
+review_friction: 2.0
+review_capacity_per_day: 200

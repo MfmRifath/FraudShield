@@ -12,6 +12,10 @@ paths:
   manifests: data/manifests
   reports: reports
   fixtures: tests/fixtures
+  costs: configs/costs.yaml
+  rules: configs/rules.yaml
+  tuned_params: configs/tuned
+  model_card: docs/model_card.md
 
 # Active dataset for `make data` / `make features` (override: DATASET=sparkov or FRAUDSHIELD_DATASET).
 dataset: ieee_cis
@@ -27,6 +31,30 @@ labels:
 
 features:
   target_encoding_smoothing: 50.0
+
+training:
+  # MLflow >= 3.13 refuses plain file stores; local runs use SQLite + a local artifact dir.
+  # The compose `mlops` profile overrides this with the MLflow server (FRAUDSHIELD_TRAINING__MLFLOW_TRACKING_URI).
+  mlflow_tracking_uri: sqlite:///mlflow.db
+  mlflow_artifact_location: mlartifacts
+  experiment: fraudshield
+  registered_model: fraudshield
+  categorical_min_count: 20
+  platt_below_positives: 1000
+  lgbm:
+    num_leaves: 63
+    learning_rate: 0.05
+    num_boost_round: 2000
+    early_stopping_rounds: 100
+    min_child_samples: 100
+    feature_fraction: 0.8
+    bagging_fraction: 0.8
+    bagging_freq: 1
+    lambda_l2: 1.0
+    scale_pos_weight: 1.0
+    num_threads: 0
+  tune:
+    n_trials: 40
 
 datasets:
   ieee_cis:

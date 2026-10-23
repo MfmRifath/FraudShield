@@ -48,6 +48,10 @@ class PathsConfig(_Frozen):
     manifests: Path = Path("data/manifests")
     reports: Path = Path("reports")
     fixtures: Path = Path("tests/fixtures")
+    costs: Path = Path("configs/costs.yaml")
+    rules: Path = Path("configs/rules.yaml")
+    tuned_params: Path = Path("configs/tuned")
+    model_card: Path = Path("docs/model_card.md")
 
 
 class DayRange(_Frozen):
@@ -151,8 +155,40 @@ class FeaturesConfig(_Frozen):
     target_encoding_smoothing: float = Field(default=50.0, gt=0)
 
 
+class LgbmConfig(_Frozen):
+    """LightGBM defaults (overridden by ``configs/tuned/<dataset>.json`` when present)."""
+
+    num_leaves: int = Field(default=63, ge=2)
+    learning_rate: float = Field(default=0.05, gt=0)
+    num_boost_round: int = Field(default=2000, ge=1)
+    early_stopping_rounds: int = Field(default=100, ge=1)
+    min_child_samples: int = Field(default=100, ge=1)
+    feature_fraction: float = Field(default=0.8, gt=0, le=1)
+    bagging_fraction: float = Field(default=0.8, gt=0, le=1)
+    bagging_freq: int = Field(default=1, ge=0)
+    lambda_l2: float = Field(default=1.0, ge=0)
+    scale_pos_weight: float = Field(default=1.0, gt=0)
+    num_threads: int = Field(default=0, ge=0, description="training threads; 0 = LightGBM default")
+
+
+class TuneConfig(_Frozen):
+    n_trials: int = Field(default=40, ge=1)
+    timeout_s: int | None = Field(default=None, ge=1)
+
+
+class TrainingConfig(_Frozen):
+    mlflow_tracking_uri: str = "sqlite:///mlflow.db"
+    mlflow_artifact_location: str = "mlartifacts"
+    experiment: str = "fraudshield"
+    registered_model: str = "fraudshield"
+    categorical_min_count: int = Field(default=20, ge=1)
+    platt_below_positives: int = Field(default=1000, ge=0)
+    lgbm: LgbmConfig = LgbmConfig()
+    tune: TuneConfig = TuneConfig()
+
+
 class Settings(BaseSettings):
-    """Root settings object. Later phases add sections (training, serving, ...)."""
+    """Root settings object. Later phases add sections (serving, streaming, ...)."""
 
     model_config = SettingsConfigDict(
         env_prefix="FRAUDSHIELD_",
@@ -169,6 +205,7 @@ class Settings(BaseSettings):
     datasets: DatasetsConfig
     labels: LabelsConfig = LabelsConfig()
     features: FeaturesConfig = FeaturesConfig()
+    training: TrainingConfig = TrainingConfig()
 
     @model_validator(mode="after")
     def _labels_mature_within_gap(self) -> Self:

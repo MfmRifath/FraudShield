@@ -1,0 +1,26 @@
+# Hard rules (rules.py): evaluated on the feature vector BEFORE the model in serving, and used
+# alone as the "rules-only" baseline in evaluation. A rule fires when all its conditions hold;
+# a condition on a null feature never holds. If any `block` rule fires the decision is block,
+# else if any `review` rule fires it is review (subject to daily review capacity).
+rules:
+  - name: velocity_burst_10m
+    action: block
+    reason: "6 or more transactions on this card within 10 minutes"
+    all:
+      - {feature: uid_cnt_10m, op: ge, value: 6}
+  - name: high_amount
+    action: review
+    reason: "Transaction amount of 1,000 or more"
+    all:
+      - {feature: amount, op: ge, value: 1000}
+  - name: velocity_1h
+    action: review
+    reason: "4 or more transactions on this card within 1 hour"
+    all:
+      - {feature: uid_cnt_1h, op: ge, value: 4}
+  - name: amount_spike
+    action: review
+    reason: "Amount at least 5x this card's 7-day average"
+    all:
+      - {feature: amt_to_uid_mean_7d, op: ge, value: 5}
+      - {feature: uid_cnt_7d, op: ge, value: 3}
