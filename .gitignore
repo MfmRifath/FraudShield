@@ -37,10 +37,13 @@ models/
 *.pkl
 *.onnx
 *.lgb
-reports/*
+mlflow.db
+reports/**
+!reports/**/
 !reports/.gitkeep
-!reports/*.md
-!reports/img/
+!reports/**/*.md
+!reports/**/*.json
+!reports/**/*.png
 
 # ---- Notebooks
 .ipynb_checkpoints/

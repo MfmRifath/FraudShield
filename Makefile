@@ -41,6 +41,15 @@ format: ## Auto-fix lint issues and format
 test: ## Unit + parity + smoke tests (everything except docker integration)
 	$(RUN) pytest -m "not integration" $(PYTEST_ARGS)
 
+.PHONY: test-docker
+test-docker: ## lint + tests in a Linux container (needs only Docker; no local libomp)
+	docker build -q -t fraudshield-test:dev -f infra/dev/Dockerfile.test infra/dev >/dev/null
+	docker run --rm -v "$(CURDIR)":/app -v fraudshield-test-venv:/venv \
+		-v fraudshield-test-uvcache:/root/.cache/uv \
+		-e PYTHONDONTWRITEBYTECODE=1 -e MYPY_CACHE_DIR=/tmp/mypy -e RUFF_CACHE_DIR=/tmp/ruff \
+		-e HYPOTHESIS_PROFILE -e CI fraudshield-test:dev \
+		sh -c 'uv sync --frozen -q && make lint test PYTEST_ARGS="-p no:cacheprovider $(PYTEST_ARGS)"'
+
 .PHONY: test-cov
 test-cov: ## Tests with coverage report
 	$(RUN) pytest -m "not integration" --cov --cov-report=term-missing $(PYTEST_ARGS)
@@ -77,20 +86,20 @@ eda: ## Execute notebooks/01_eda.ipynb in place (needs `make features` for DATAS
 		jupyter nbconvert --to notebook --execute --inplace notebooks/01_eda.ipynb
 
 .PHONY: train
-train: ## Train baselines + LightGBM, log to MLflow, set @challenger
-	$(call not_yet,Phase 2)
+train: ## Train baselines + LightGBM, evaluate on test, log to MLflow, set @challenger
+	$(RUN) fraudshield train $(DS_ARG)
 
 .PHONY: tune
-tune: ## Optuna tuning with time-aware CV
-	$(call not_yet,Phase 2)
+tune: ## Optuna tuning (rolling-origin CV) -> configs/tuned/<ds>.json
+	$(RUN) fraudshield tune $(DS_ARG)
 
 .PHONY: promote
 promote: ## Run the promotion gate and move @champion
 	$(call not_yet,Phase 5)
 
 .PHONY: docs
-docs: ## Generate model card and reports
-	$(call not_yet,Phase 2)
+docs: ## Render docs/model_card.md from reports/<ds>/metrics.json
+	$(RUN) fraudshield model-card $(DS_ARG)
 
 # ---------------------------------------------------------------- runtime
 .PHONY: up
