@@ -19,11 +19,14 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import pandera.polars as pa
 import polars as pl
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+Decision = Literal["approve", "review", "block"]
+DECISIONS: Final[tuple[Decision, ...]] = ("approve", "review", "block")
 
 EXTRA_PREFIX: Final = "x_"
 TIME_DTYPE: Final = pl.Datetime("us", "UTC")
