@@ -8,6 +8,9 @@ SHELL := /bin/bash
 UV ?= uv
 RUN := $(UV) run --frozen
 PYTEST_ARGS ?=
+# Dataset for data/features/eda targets; empty = `dataset` in the active config (ieee_cis).
+DATASET ?=
+DS_ARG := $(if $(DATASET),--dataset $(DATASET))
 
 define not_yet
 	@echo "make $@: not implemented yet (planned for $(1), see PLAN.md)" >&2; exit 1
@@ -53,12 +56,25 @@ clean: ## Remove caches and build outputs (keeps data/)
 
 # ---------------------------------------------------------------- data & modeling
 .PHONY: data
-data: ## Download raw datasets + write data manifest
-	$(call not_yet,Phase 1)
+data: ## Download raw data (DATASET=ieee_cis|sparkov), verify/record data/manifests/<ds>.raw.json
+	$(RUN) fraudshield data download $(DS_ARG)
 
 .PHONY: features
-features: ## Build point-in-time feature parquet
-	$(call not_yet,Phase 1)
+features: ## Build canonical + PIT feature parquet and data/manifests/<ds>.features.json
+	$(RUN) fraudshield features build $(DS_ARG)
+
+.PHONY: features-check
+features-check: ## Rebuild features and fail unless hashes match the committed manifest
+	$(RUN) fraudshield features build --check $(DS_ARG)
+
+.PHONY: fixture
+fixture: ## Regenerate tests/fixtures/sparkov_sample.csv from raw Sparkov (CC0)
+	$(RUN) python scripts/make_sparkov_fixture.py
+
+.PHONY: eda
+eda: ## Execute notebooks/01_eda.ipynb in place (needs `make features` for DATASET)
+	FRAUDSHIELD_DATASET=$(or $(DATASET),sparkov) $(UV) run --frozen --group notebooks \
+		jupyter nbconvert --to notebook --execute --inplace notebooks/01_eda.ipynb
 
 .PHONY: train
 train: ## Train baselines + LightGBM, log to MLflow, set @challenger
