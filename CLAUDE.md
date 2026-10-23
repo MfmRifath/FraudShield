@@ -4,8 +4,8 @@
 
 ## Current phase
 
-**Phase 1: Data & PIT features: complete, awaiting review.** Next: Phase 2 (Modeling), only after the user types "continue".
-IEEE-CIS raw data is **not downloaded yet** (needs the user's Kaggle token + accepted competition rules); Sparkov is built.
+**Phase 2: Modeling: code complete, awaiting review.** Next: Phase 3 (Serving), only after the user types "continue". Real-data DoD items are deferred (rule 9).
+IEEE-CIS raw data is **not downloaded yet** (needs the user's Kaggle token + accepted competition rules). Sparkov was downloaded and built in Phase 1.
 
 ## Goal
 
@@ -21,6 +21,7 @@ A recruiter-grade, production-style **real-time fraud detection service**: point
 6. For ambiguities, choose the simplest spec-consistent option, write an ADR and list it in the phase summary. Ask only when a choice is costly to reverse.
 7. **Never fabricate metrics.** Every README number must come from a rerunnable script writing to `reports/`.
 8. Tick PLAN.md items only when tests prove them.
+9. **Code first, run later (user, 2026-10-23):** do NOT download datasets or run real training, tuning, data-driven reports or long-running jobs until *all* phases are coded. Build and verify everything against `tests/fixtures/` and synthetic data. Real-data steps (`make data`, `make features`, `make train/tune`, reports, model card from real runs) are collected in PLAN.md "Deferred real-data runs" and are done together with the user at the end. A phase's DoD items that need real data are marked *deferred*, not ticked.
 
 ## Architecture summary
 
@@ -49,11 +50,18 @@ src/fraudshield/labels.py      # deterministic label_available_time (shared with
 src/fraudshield/manifest.py    # raw / features manifests, logical content hash
 src/fraudshield/pipeline.py    # fetch_raw, build_features (+ --check); cli.py = `fraudshield` CLI
 src/fraudshield/eda.py         # EDA summaries used by notebooks/01_eda.ipynb
+src/fraudshield/rules.py       # hard rules (configs/rules.yaml): row + frame evaluation (serving + rules-only baseline)
+src/fraudshield/reasons.py     # reason groups/labels + top-3 grouped reasons from pred_contrib
+src/fraudshield/model_bundle.py  # deployable artifact: full.txt + degraded.txt + bundle.json (no pickles)
+src/fraudshield/training/      # splits, matrix (CategoryEncoder), models, calibrate, costs (policy), evaluate, tune, package (MLflow pyfunc), model_card, train
+configs/costs.yaml, configs/rules.yaml, configs/tuned/<ds>.json (written by `make tune`)
 configs/                       # base.yaml (+ costs.yaml, rules.yaml, ... in later phases)
 data/{raw,interim,processed}/  # git-ignored except .gitkeep: raw/<ds>/, interim/<ds>/transactions.parquet, processed/<ds>/features.parquet
 data/manifests/                # COMMITTED: <ds>.raw.json, <ds>.features.json
 scripts/make_sparkov_fixture.py -> tests/fixtures/sparkov_sample.csv (2,000 raw CC0 rows, committed)
 tests/oracle.py, tests/strategies.py  # brute-force feature oracle + hypothesis strategies
+tests/synthetic.py             # planted-signal synthetic data for the training smoke test (not a benchmark)
+infra/dev/Dockerfile.test      # Linux test runner (`make test-docker`)
 tests/{unit,parity,integration,fixtures}/
 ui/  infra/{prometheus,grafana,nginx,deploy}/  loadtest/  notebooks/  scripts/  reports/
 docs/adr/  docs/img/
@@ -72,6 +80,10 @@ docs/adr/  docs/img/
 - **Feature semantics** are documented once, in the `features/definitions.py` docstring: windows `(t-w, t]` incl. current event; TE from daily 00:00 UTC snapshot with labels available <= snapshot (ADR-0005). Any new executor must match `tests/oracle.py`.
 - **Polars 2 rules** (ADR-0007): eager or `collect(engine="in-memory")`; joins `maintain_order="left"`; re-sort on an explicit key; `join_asof(by=...)` needs `check_sortedness=False` after explicit sort (warning = test failure); `str.to_datetime` not casts. DuckDB: `SET TimeZone='UTC'`, return integers only.
 - **Content hashes** use `manifest.frame_content_sha256` (logical CSV rendering), never Arrow IPC bytes.
+- **Decisions** are `schema.Decision` ("approve"|"review"|"block"); numpy decision arrays MUST use `costs.DECISION_DTYPE` ("<U7"): numpy otherwise truncates "approve" -> "approv" on assignment (real bug caught by tests).
+- **Model artifacts**: serving loads `ModelBundle` (LightGBM text + JSON). MLflow pyfunc wraps it; promotion uses aliases `@champion`/`@challenger`. Predict with `num_threads=1`.
+- **Warning filters** (`[tool.pytest] filterwarnings`): only narrow, commented third-party entries (message + category + module where possible). Never blanket-ignore.
+- **LightGBM on macOS** needs `brew install libomp`; without it pytest stops with a UsageError. `make test-docker` runs everything in Linux.
 
 ## Commands
 
@@ -86,6 +98,10 @@ make features DATASET=sparkov   # canonical + features parquet + features manife
 make features-check DATASET=sparkov  # rebuild, fail unless hashes == committed manifest
 make fixture           # regenerate the Sparkov test fixture (deterministic)
 make eda DATASET=sparkov        # execute notebooks/01_eda.ipynb in place
+make test-docker       # lint + tests in Linux (no local libomp needed)
+make tune DATASET=..   # Optuna -> configs/tuned/<ds>.json      (real data: deferred)
+make train DATASET=..  # train + evaluate + MLflow + @challenger (real data: deferred)
+make docs DATASET=..   # docs/model_card.md from reports/<ds>/metrics.json
 uv run pre-commit run --all-files
 ```
 
@@ -107,8 +123,15 @@ uv run pre-commit run --all-files
 | hatchling | 1.32.4 | build backend |
 | polars | 2.0.0 | streaming-by-default lazy engine; see Polars 2 rules |
 | duckdb | 2.0.0 (LTS) | window `count(DISTINCT)` used for distinct counts |
-| pyarrow / numpy | 26.0.0 / 2.5.4 | |
-| pandera | 0.34.1 | `pandera.polars` backend; pandas NOT installed |
+| pyarrow / numpy | 25.0.1 / 2.5.4 | pyarrow capped <26 by mlflow 3.17.2 |
+| pandera | 0.34.1 | `pandera.polars` backend |
+| lightgbm | 4.7.0 | macOS wheel needs system libomp |
+| scikit-learn | 1.9.1 | logistic baseline, isotonic/Platt fitting, metrics |
+| optuna | 5.0.0 | TPE multivariate by default in 5.x; seed set explicitly |
+| mlflow | 3.17.2 | file stores rejected (>=3.13): SQLite locally; aliases not stages |
+| pandas / pandas-stubs | 3.1.0 / 3.0.5.260914 | pyfunc I/O only |
+| shap | 0.54.1 | offline only (no numba dependency in 0.54) |
+| matplotlib | 3.11.2 | report plots (Agg backend) |
 | kagglehub | 1.0.3 | `data` group |
 | matplotlib / jupyterlab / ipykernel | 3.11.2 / 4.6.4 / 7.4.0 | `notebooks` group |
 | GH Actions | checkout@v7, setup-uv@v10, upload-artifact@v7 | SHA pinning in Phase 8 |
@@ -124,3 +147,4 @@ Stack gotchas to respect when these are added later: Evidently 0.7+ new API (`fr
 - [ADR-0005](docs/adr/0005-label-delay-and-target-encoding.md): hash-based label delay (uniform 1–7 d), daily-snapshot TE
 - [ADR-0006](docs/adr/0006-feature-library-design.md): declarative specs, Polars+DuckDB executor, oracle tests, manifests/hashes
 - [ADR-0007](docs/adr/0007-phase1-dependency-versions.md): Polars 2 / DuckDB 2 adopted with mitigations; pandas deferred
+- [ADR-0008](docs/adr/0008-modeling-policy-and-packaging.md): data use per window, baselines, calibration, cost policy + capacity, metric definitions, no-pickle bundle, reason codes

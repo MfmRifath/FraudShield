@@ -2,11 +2,12 @@
 
 **Real-time fraud detection service**: point-in-time-correct features, a calibrated LightGBM model with a cost-aware approve/review/block policy, streaming feature updates (Redpanda + Quix Streams + Redis), a champion/challenger MLOps loop (MLflow + Prefect), drift monitoring (Evidently, Prometheus, Grafana) and an analyst review UI (React).
 
-> **Status: under construction (Phase 1 of 9 done: data and point-in-time features).** See [PLAN.md](PLAN.md) for the roadmap. No model metrics are reported yet. Every number that appears here later will be produced by a script in this repo that you can rerun.
+> **Status: under construction (Phases 0-2 coded: foundations, point-in-time features, modeling pipeline).** See [PLAN.md](PLAN.md) for the roadmap. No model metrics are reported yet. Every number that appears here later will be produced by a script in this repo that you can rerun.
 
 ## Quickstart (development)
 
 Requirements: [uv](https://docs.astral.sh/uv/) ≥ 0.12.23, GNU make, git. Python 3.12 is installed by uv if missing.
+On macOS, LightGBM also needs the OpenMP runtime (`brew install libomp`); alternatively, `make test-docker` runs lint and tests in a Linux container with only Docker installed.
 
 ```bash
 make setup   # install locked dependencies + pre-commit hooks
@@ -30,6 +31,17 @@ make eda DATASET=sparkov             # run notebooks/01_eda.ipynb
 ```
 
 For IEEE-CIS, set `KAGGLE_API_TOKEN` (or create `~/.kaggle/kaggle.json`) first, then run the same targets with `DATASET=ieee_cis`. Feature semantics, including windows, label delay and target encoding, are documented in [`features/definitions.py`](src/fraudshield/features/definitions.py) and ADRs 0004–0006.
+
+## Modeling
+
+```bash
+make tune DATASET=ieee_cis    # Optuna, rolling-origin CV inside train -> configs/tuned/ieee_cis.json
+make train DATASET=ieee_cis   # rules-only, logistic, LightGBM degraded + full; calibrate; evaluate on test;
+                              # log to MLflow (SQLite locally) and register models:/fraudshield@challenger
+make docs DATASET=ieee_cis    # docs/model_card.md from reports/ieee_cis/metrics.json
+```
+
+Decisions use expected costs from [`configs/costs.yaml`](configs/costs.yaml) with a daily review capacity. The hard rules in [`configs/rules.yaml`](configs/rules.yaml) are both the rules-only baseline and the serving pre-check. See [ADR-0008](docs/adr/0008-modeling-policy-and-packaging.md). Results will appear here once the real-data training run has been done; none have been produced yet.
 
 ## Design decisions
 
