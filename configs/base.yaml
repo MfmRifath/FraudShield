@@ -1,0 +1,13 @@
+# FraudShield base configuration (16 GB "full" profile).
+# Override per environment with FRAUDSHIELD_CONFIG=configs/<profile>.yaml
+# or individual keys with env vars, e.g. FRAUDSHIELD_PATHS__DATA_RAW=/mnt/raw.
+env: dev
+log_level: INFO
+seed: 42
+
+paths:
+  data_raw: data/raw
+  data_interim: data/interim
+  data_processed: data/processed
+  reports: reports
+  fixtures: tests/fixtures
