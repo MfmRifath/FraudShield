@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.12.23"
+  HYPOTHESIS_PROFILE: ci
+
+jobs:
+  lint-test:
+    name: lint + tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Sync locked environment
+        run: uv sync --frozen
+
+      - name: Lint (ruff + mypy)
+        run: make lint
+
+      - name: Tests (unit + parity + smoke)
+        run: make test PYTEST_ARGS="--junitxml=pytest-report.xml"
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-report
+          path: pytest-report.xml
+          if-no-files-found: ignore
+
+  # Added in later phases (see PLAN.md):
+  #   docker-build:      Phase 3  - build the API image (multi-arch in cd.yml, Phase 8)
+  #   integration:       Phase 4  - docker compose core profile + `make test-integration`
