@@ -4,7 +4,8 @@
 
 ## Current phase
 
-**Phase 0: Foundations: complete, awaiting review.** Next: Phase 1 (Data & PIT features), only after the user types "continue".
+**Phase 1: Data & PIT features: complete, awaiting review.** Next: Phase 2 (Modeling), only after the user types "continue".
+IEEE-CIS raw data is **not downloaded yet** (needs the user's Kaggle token + accepted competition rules); Sparkov is built.
 
 ## Goal
 
@@ -42,9 +43,17 @@ registry:  MLflow, model "fraudshield", aliases @champion / @challenger (no stag
 
 ```
 src/fraudshield/{adapters,features,streaming,training,serving,monitoring,flows,cases}/
-src/fraudshield/config.py      # Settings (pydantic-settings + YAML)
+src/fraudshield/config.py      # Settings (pydantic-settings + YAML): datasets, splits, labels, features
+src/fraudshield/schema.py      # canonical Transaction (pydantic) + canonical frame + pandera schema
+src/fraudshield/labels.py      # deterministic label_available_time (shared with label emitter)
+src/fraudshield/manifest.py    # raw / features manifests, logical content hash
+src/fraudshield/pipeline.py    # fetch_raw, build_features (+ --check); cli.py = `fraudshield` CLI
+src/fraudshield/eda.py         # EDA summaries used by notebooks/01_eda.ipynb
 configs/                       # base.yaml (+ costs.yaml, rules.yaml, ... in later phases)
-data/{raw,interim,processed}/  # git-ignored except .gitkeep
+data/{raw,interim,processed}/  # git-ignored except .gitkeep: raw/<ds>/, interim/<ds>/transactions.parquet, processed/<ds>/features.parquet
+data/manifests/                # COMMITTED: <ds>.raw.json, <ds>.features.json
+scripts/make_sparkov_fixture.py -> tests/fixtures/sparkov_sample.csv (2,000 raw CC0 rows, committed)
+tests/oracle.py, tests/strategies.py  # brute-force feature oracle + hypothesis strategies
 tests/{unit,parity,integration,fixtures}/
 ui/  infra/{prometheus,grafana,nginx,deploy}/  loadtest/  notebooks/  scripts/  reports/
 docs/adr/  docs/img/
@@ -59,6 +68,10 @@ docs/adr/  docs/img/
 - **Tests:** markers `unit`, `parity`, `smoke`, `integration`, `slow`. pytest runs in strict mode with `filterwarnings = error`. Hypothesis profiles are `dev` (default) and `ci` (`HYPOTHESIS_PROFILE=ci`, 300 examples, derandomized).
 - **Line length:** 100. Formatter: `ruff format`.
 - **Makefile targets for unbuilt phases** exit 1 with "not implemented yet (planned for Phase N)".
+- **Canonical frame invariants** (enforced by `validate_canonical`): fixed columns in `CANONICAL_COLUMNS` order then `x_*` Float64 extras; `event_time` Datetime(us, UTC) strictly increasing + unique (ties broken by txn_id, +k µs; ADR-0004); `label_available_time` set iff label set and > event_time.
+- **Feature semantics** are documented once, in the `features/definitions.py` docstring: windows `(t-w, t]` incl. current event; TE from daily 00:00 UTC snapshot with labels available <= snapshot (ADR-0005). Any new executor must match `tests/oracle.py`.
+- **Polars 2 rules** (ADR-0007): eager or `collect(engine="in-memory")`; joins `maintain_order="left"`; re-sort on an explicit key; `join_asof(by=...)` needs `check_sortedness=False` after explicit sort (warning = test failure); `str.to_datetime` not casts. DuckDB: `SET TimeZone='UTC'`, return integers only.
+- **Content hashes** use `manifest.frame_content_sha256` (logical CSV rendering), never Arrow IPC bytes.
 
 ## Commands
 
@@ -68,6 +81,11 @@ make lint              # ruff check, ruff format --check, mypy (strict)
 make test              # pytest -m "not integration"
 make test-cov          # with coverage
 make format            # ruff --fix + format
+make data DATASET=sparkov       # download (anonymous for Sparkov) + verify/record raw manifest
+make features DATASET=sparkov   # canonical + features parquet + features manifest (~16 s, ~3.2 GB RSS)
+make features-check DATASET=sparkov  # rebuild, fail unless hashes == committed manifest
+make fixture           # regenerate the Sparkov test fixture (deterministic)
+make eda DATASET=sparkov        # execute notebooks/01_eda.ipynb in place
 uv run pre-commit run --all-files
 ```
 
@@ -87,6 +105,12 @@ uv run pre-commit run --all-files
 | hypothesis | 6.170.8 | |
 | pre-commit | 4.7.0 | pre-commit-hooks v6.0.0 |
 | hatchling | 1.32.4 | build backend |
+| polars | 2.0.0 | streaming-by-default lazy engine; see Polars 2 rules |
+| duckdb | 2.0.0 (LTS) | window `count(DISTINCT)` used for distinct counts |
+| pyarrow / numpy | 26.0.0 / 2.5.4 | |
+| pandera | 0.34.1 | `pandera.polars` backend; pandas NOT installed |
+| kagglehub | 1.0.3 | `data` group |
+| matplotlib / jupyterlab / ipykernel | 3.11.2 / 4.6.4 / 7.4.0 | `notebooks` group |
 | GH Actions | checkout@v7, setup-uv@v10, upload-artifact@v7 | SHA pinning in Phase 8 |
 
 Stack gotchas to respect when these are added later: Evidently 0.7+ new API (`from evidently import Report, Dataset, DataDefinition`; presets in `evidently.presets`; `report.run` returns a snapshot). MLflow uses aliases, not stages. Feast pre-1.0 (pin exact). No Bytewax; use Quix Streams. Redpanda needs an explicit `--memory`.
@@ -96,3 +120,7 @@ Stack gotchas to respect when these are added later: Evidently 0.7+ new API (`fr
 - [ADR-0001](docs/adr/0001-stack-choice.md): technology stack
 - [ADR-0002](docs/adr/0002-dependency-policy.md): exact pins, add deps in the phase that needs them
 - [ADR-0003](docs/adr/0003-configuration.md): pydantic-settings + one YAML per profile, env overrides, forbid extras
+- [ADR-0004](docs/adr/0004-event-time-and-entities.md): synthetic IEEE time, uid recipes, strict event order (µs tie-break)
+- [ADR-0005](docs/adr/0005-label-delay-and-target-encoding.md): hash-based label delay (uniform 1–7 d), daily-snapshot TE
+- [ADR-0006](docs/adr/0006-feature-library-design.md): declarative specs, Polars+DuckDB executor, oracle tests, manifests/hashes
+- [ADR-0007](docs/adr/0007-phase1-dependency-versions.md): Polars 2 / DuckDB 2 adopted with mitigations; pandas deferred
