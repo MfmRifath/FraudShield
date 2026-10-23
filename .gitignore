@@ -1,0 +1,57 @@
+# ---- Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ---- Secrets (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+kaggle.json
+
+# ---- Data: only the small committed test fixtures are tracked
+data/raw/*
+data/interim/*
+data/processed/*
+!data/*/.gitkeep
+
+# ---- Large / generated artifacts
+mlruns/
+mlartifacts/
+artifacts/
+models/
+*.joblib
+*.pkl
+*.onnx
+*.lgb
+reports/*
+!reports/.gitkeep
+!reports/*.md
+!reports/img/
+
+# ---- Notebooks
+.ipynb_checkpoints/
+
+# ---- UI
+ui/node_modules/
+ui/dist/
+ui/.vite/
+
+# ---- OS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
