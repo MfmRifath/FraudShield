@@ -9,5 +9,60 @@ paths:
   data_raw: data/raw
   data_interim: data/interim
   data_processed: data/processed
+  manifests: data/manifests
   reports: reports
   fixtures: tests/fixtures
+
+# Active dataset for `make data` / `make features` (override: DATASET=sparkov or FRAUDSHIELD_DATASET).
+dataset: ieee_cis
+
+# Labels become known a deterministic, hash(txn_id)-derived delay after the event (ADR-0005).
+# max_days must not exceed any dataset's split gap_days (validated).
+labels:
+  delay:
+    kind: uniform
+    min_days: 1.0
+    max_days: 7.0
+    seed: 17
+
+features:
+  target_encoding_smoothing: 50.0
+
+datasets:
+  ieee_cis:
+    kaggle_handle: ieee-fraud-detection
+    kaggle_kind: competition
+    license: "Kaggle competition rules (non-redistributable)"
+    # Synthetic timestamp assumption: event_time = origin + TransactionDT seconds (ADR-0004).
+    origin: "2017-12-01T00:00:00Z"
+    splits:
+      train: {start: 1, end: 120}
+      val: {start: 128, end: 150}
+      test: {start: 158, end: 183}
+      gap_days: 7
+      cv_folds: 3
+      cv_val_days: 14
+      cv_min_train_days: 30
+    # Request-time passthrough numeric columns (become x_<lowercase name>).
+    # Initial selection; revisited in Phase 2 with importance on the validation window.
+    extra_columns: [
+      card1, card2, card3, card5, addr2, dist1,
+      C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14,
+      D1, D2, D3, D4, D10, D11, D15,
+      V1, V3, V4, V6, V8, V11, V258, V283, V294, V307, V317,
+    ]
+  sparkov:
+    kaggle_handle: kartik2112/fraud-detection
+    kaggle_kind: dataset
+    license: CC0-1.0
+    # trans_date_trans_time is interpreted as UTC; day 1 = 2019-01-01.
+    origin: "2018-12-31T00:00:00Z"
+    splits:
+      train: {start: 1, end: 500}
+      val: {start: 508, end: 530}
+      test: {start: 538, end: 731}
+      gap_days: 7
+      cv_folds: 3
+      cv_val_days: 28
+      cv_min_train_days: 60
+    extra_columns: [city_pop, lat, long, merch_lat, merch_long]
