@@ -1,0 +1,38 @@
+# ruff and mypy run from the project venv (`uv run`) so hook versions always match uv.lock.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --fix
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format
+        language: system
+        types_or: [python, pyi]
+      - id: mypy
+        name: mypy
+        entry: uv run --frozen mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: no-data-files
+        name: block files under data/{raw,interim,processed}
+        entry: data files must not be committed; regenerate them with `make data`
+        language: fail
+        files: ^data/(raw|interim|processed)/(?!\.gitkeep$)
