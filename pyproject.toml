@@ -9,13 +9,20 @@ authors = [{ name = "FraudShield maintainers" }]
 # Exact pins only. Heavy ML/infra deps are added in the phase that first needs them (ADR-0002).
 dependencies = [
     "duckdb==2.0.0",
+    "lightgbm==4.7.0",
+    "matplotlib==3.11.2",
+    "mlflow==3.17.2",
     "numpy==2.5.4",
+    "optuna==5.0.0",
+    "pandas==3.1.0",
     "pandera==0.34.1",
     "polars==2.0.0",
-    "pyarrow==26.0.0",
+    "pyarrow==25.0.1",
     "pydantic==2.14.1",
     "pydantic-settings==2.16.1",
     "pyyaml==6.0.3",
+    "scikit-learn==1.9.1",
+    "shap==0.54.1",
 ]
 
 [project.scripts]
@@ -28,6 +35,7 @@ data = [
 dev = [
     "hypothesis==6.170.8",
     "mypy==2.4.0",
+    "pandas-stubs==3.0.5.260914",
     "pre-commit==4.7.0",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
@@ -37,7 +45,6 @@ dev = [
 notebooks = [
     "ipykernel==7.4.0",
     "jupyterlab==4.6.4",
-    "matplotlib==3.11.2",
 ]
 
 [build-system]
@@ -100,7 +107,7 @@ warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
 [[tool.mypy.overrides]]
-module = ["kagglehub", "kagglehub.*"]
+module = ["kagglehub", "kagglehub.*", "lightgbm", "lightgbm.*", "sklearn", "sklearn.*", "shap", "shap.*"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]
@@ -121,7 +128,16 @@ markers = [
     "integration: requires docker compose services",
     "slow: takes more than a few seconds",
 ]
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # third-party noise (keep each entry narrow and justified):
+    # mlflow emits this from its own GenAI type hints at import time
+    "ignore:.*Any type hint is inferred as AnyType:UserWarning",
+    # mlflow's SQLAlchemy tracking store uses a loader option deprecated in SQLAlchemy 2.1
+    "ignore:.*``noload`` loader strategy is deprecated:sqlalchemy.exc.SADeprecationWarning",
+    # mlflow 3.17 input-example serialisation compares columns to range() (pandas 3 deprecation)
+    "ignore:Operation with range is deprecated:pandas.errors.Pandas4Warning:mlflow.models.utils",
+]
 
 # ---------------------------------------------------------------- coverage
 [tool.coverage.run]
