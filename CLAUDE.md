@@ -1,0 +1,98 @@
+# CLAUDE.md: FraudShield project memory
+
+> Read this file and PLAN.md before writing code in any session. Keep it under ~200 lines.
+
+## Current phase
+
+**Phase 0: Foundations: complete, awaiting review.** Next: Phase 1 (Data & PIT features), only after the user types "continue".
+
+## Goal
+
+A recruiter-grade, production-style **real-time fraud detection service**: point-in-time-correct features, LightGBM with calibration and a cost-aware decision policy, streaming feature updates, a champion/challenger MLOps loop, drift monitoring and an analyst UI. It must run on a 16 GB laptop (8 GB lite profile; under 1 GB single-container demo) on arm64 and amd64.
+
+## Working rules (from the user, non-negotiable)
+
+1. Work **phase by phase**. At the end of each phase: run full tests + linters, update PLAN.md (progress log) and this file, write a phase summary (built / how to run / test results / known issues / decisions needing input), then **STOP until the user types "continue"**.
+2. Small conventional commits (`feat:`, `fix:`, `test:`, `docs:`, `chore:`, `ci:`). Never commit `data/raw`, secrets or large artifacts.
+3. All business logic in `src/fraudshield`. Notebooks only import from the package.
+4. Type hints everywhere; ruff + mypy `--strict` clean; pytest for everything; prefer pure functions.
+5. Before adding or upgrading a dependency, check its changelog, then pin it exactly (ADR-0002).
+6. For ambiguities, choose the simplest spec-consistent option, write an ADR and list it in the phase summary. Ask only when a choice is costly to reverse.
+7. **Never fabricate metrics.** Every README number must come from a rerunnable script writing to `reports/`.
+8. Tick PLAN.md items only when tests prove them.
+
+## Architecture summary
+
+```
+adapters (IEEE-CIS, Sparkov) ──> canonical Transaction ──> features/definitions.py
+                                                         ├─ offline.py (Polars/DuckDB, PIT) ──> training/*
+                                                         └─ online.py  (FeatureStore: Redis | InMemory) ──> serving/
+streaming: replayer -> transactions.raw -> API /score -> decisions -> processor (Quix) -> Redis
+           label_emitter -> labels ; parquet_sink (hourly) ; shadow (@challenger -> shadow.scores)
+mlops:     Prefect flows: backfill_features, build_training_set, retrain, promote, drift
+registry:  MLflow, model "fraudshield", aliases @champion / @challenger (no stages)
+```
+
+- Score path: validate -> pipelined feature fetch (10 ms timeout + circuit breaker) -> hard rules -> LightGBM (num_threads=1) -> calibrator -> cost policy -> top-3 reason codes (`pred_contrib`) -> async publish.
+- Fallbacks: store failure -> degraded request-only model -> rules-only. `/score` never returns 5xx for internal faults.
+- Key data assumptions: IEEE-CIS event_time = 2017-12-01 + TransactionDT seconds. uid = `card1_addr1_D1n`, where D1n = floor(TransactionDT/86400) - D1. Sparkov uid = cc_num.
+- Splits (IEEE-CIS days): train 1-120, val 128-150, test 158-183 (7-day label-delay gaps).
+
+## Repository layout
+
+```
+src/fraudshield/{adapters,features,streaming,training,serving,monitoring,flows,cases}/
+src/fraudshield/config.py      # Settings (pydantic-settings + YAML)
+configs/                       # base.yaml (+ costs.yaml, rules.yaml, ... in later phases)
+data/{raw,interim,processed}/  # git-ignored except .gitkeep
+tests/{unit,parity,integration,fixtures}/
+ui/  infra/{prometheus,grafana,nginx,deploy}/  loadtest/  notebooks/  scripts/  reports/
+docs/adr/  docs/img/
+```
+
+## Conventions
+
+- **Python 3.12**, src layout, hatchling build, `uv` for everything (`uv run --frozen ...`).
+- **Config:** `fraudshield.config.get_settings()`. Precedence: init > env (`FRAUDSHIELD_*`, `__` nesting) > YAML (`FRAUDSHIELD_CONFIG`, default `configs/base.yaml`) > defaults. `extra="forbid"`, frozen. New profiles must be added to `PROFILES` in `tests/unit/test_config.py`. See ADR-0003.
+- **Imports:** absolute only (`ban-relative-imports = "all"`).
+- **Datetimes:** always timezone-aware UTC (ruff `DTZ` enforced).
+- **Tests:** markers `unit`, `parity`, `smoke`, `integration`, `slow`. pytest runs in strict mode with `filterwarnings = error`. Hypothesis profiles are `dev` (default) and `ci` (`HYPOTHESIS_PROFILE=ci`, 300 examples, derandomized).
+- **Line length:** 100. Formatter: `ruff format`.
+- **Makefile targets for unbuilt phases** exit 1 with "not implemented yet (planned for Phase N)".
+
+## Commands
+
+```bash
+make setup             # uv sync --frozen + pre-commit install
+make lint              # ruff check, ruff format --check, mypy (strict)
+make test              # pytest -m "not integration"
+make test-cov          # with coverage
+make format            # ruff --fix + format
+uv run pre-commit run --all-files
+```
+
+## Pinned versions (verified 2026-10-23)
+
+| Package | Version | Notes |
+|---|---|---|
+| Python | 3.12.15 (`>=3.12,<3.13`) | |
+| uv | 0.12.23 (`required-version >=0.12.23,<0.13`) | CI pins `UV_VERSION` |
+| pydantic | 2.14.1 | |
+| pydantic-settings | 2.16.1 | uses the built-in `YamlConfigSettingsSource` |
+| pyyaml | 6.0.3 | |
+| ruff | 0.17.2 | 0.17 changed default rules and the default target (we set both explicitly) |
+| mypy | 2.4.0 | 2.x: `local_partial_types` + `strict_bytes` on by default; native parser default |
+| pytest | 9.1.1 | native `[tool.pytest]` table + `strict = true` |
+| pytest-cov | 7.1.0 | |
+| hypothesis | 6.170.8 | |
+| pre-commit | 4.7.0 | pre-commit-hooks v6.0.0 |
+| hatchling | 1.32.4 | build backend |
+| GH Actions | checkout@v7, setup-uv@v10, upload-artifact@v7 | SHA pinning in Phase 8 |
+
+Stack gotchas to respect when these are added later: Evidently 0.7+ new API (`from evidently import Report, Dataset, DataDefinition`; presets in `evidently.presets`; `report.run` returns a snapshot). MLflow uses aliases, not stages. Feast pre-1.0 (pin exact). No Bytewax; use Quix Streams. Redpanda needs an explicit `--memory`.
+
+## Decisions (docs/adr/)
+
+- [ADR-0001](docs/adr/0001-stack-choice.md): technology stack
+- [ADR-0002](docs/adr/0002-dependency-policy.md): exact pins, add deps in the phase that needs them
+- [ADR-0003](docs/adr/0003-configuration.md): pydantic-settings + one YAML per profile, env overrides, forbid extras
