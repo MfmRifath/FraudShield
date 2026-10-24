@@ -46,6 +46,7 @@ from fraudshield.training.evaluate import (
     plot_cost_sensitivity,
     plot_pr_curves,
     plot_reliability,
+    plot_shap_summary,
     to_markdown,
 )
 from fraudshield.training.matrix import CategoryEncoder, build_matrix, typical_values
@@ -240,6 +241,11 @@ def run_training(
         plot_reliability(curves, img / "reliability.png"),
         plot_cost_sensitivity(sweep, img / "cost_sensitivity.png"),
     ]
+    sample = np.random.default_rng(seed).permutation(len(te))[:2000]
+    contrib = np.asarray(full.predict(x["test"][sample], pred_contrib=True), dtype=np.float64)
+    plots.append(
+        plot_shap_summary(contrib, x["test"][sample], names, img / "shap_summary.png", seed=seed)
+    )
     (report_dir / "comparison.md").write_text(to_markdown(comparison))
     (report_dir / "cost_sensitivity.md").write_text(to_markdown(sweep))
 

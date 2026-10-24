@@ -267,6 +267,30 @@ def plot_cost_sensitivity(sweep: pl.DataFrame, path: Path) -> Path:
     return _save(fig, path)
 
 
+def plot_shap_summary(
+    contributions: FloatArray,
+    x: FloatArray,
+    feature_names: Sequence[str],
+    path: Path,
+    max_display: int = 20,
+    seed: int = 0,
+) -> Path:
+    """Beeswarm of exact TreeSHAP values (LightGBM ``pred_contrib``; last column = bias)."""
+    import shap
+
+    # all-missing columns (e.g. email fields on Sparkov) carry no signal and break shap's colouring
+    keep = ~np.all(np.isnan(x), axis=0)
+    shap.summary_plot(
+        contributions[:, :-1][:, keep],
+        features=x[:, keep],
+        feature_names=[n for n, k in zip(feature_names, keep, strict=True) if k],
+        max_display=max_display,
+        show=False,
+        rng=seed,  # explicit: shap's jitter must not depend on the global numpy RNG
+    )
+    return _save(plt.gcf(), path)
+
+
 def _save(fig: Any, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
