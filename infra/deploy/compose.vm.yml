@@ -1,0 +1,55 @@
+# Public-VM override (docs/deploy/arm-vm.md):
+#   docker compose -f compose.yml -f infra/deploy/compose.vm.yml --profile core --profile mlops --profile ui up -d
+# * nothing but Caddy listens on public interfaces: Docker's port publishing bypasses host
+#   firewalls (ufw), so internal ports are unpublished here instead of firewalled;
+# * operator UIs (Redpanda Console, MLflow, Prefect, Prometheus, Grafana) bind to 127.0.0.1:
+#   reach them through an SSH tunnel;
+# * Caddy terminates TLS (automatic certificates for FS_DOMAIN) and puts basic auth in front of
+#   the analyst UI (ADR-0013 left authentication to the deployment).
+name: fraudshield
+
+services:
+  redpanda: { ports: !reset [] }
+  redis: { ports: !reset [] }
+  api: { ports: !reset [] }
+  processor: { ports: !reset [] }
+  gateway: { ports: !reset [] }
+  label-emitter: { ports: !reset [] }
+  parquet-sink: { ports: !reset [] }
+  shadow: { ports: !reset [] }
+  postgres: { ports: !reset [] }
+  ui: { ports: !reset [] }
+  console: { ports: !override ["127.0.0.1:8080:8080"] }
+  mlflow: { ports: !override ["127.0.0.1:5050:5000"] }
+  prefect-server: { ports: !override ["127.0.0.1:4200:4200"] }
+  prometheus: { ports: !override ["127.0.0.1:9090:9090"] }
+  grafana: { ports: !override ["127.0.0.1:3000:3000"] }
+
+  caddy:
+    image: caddy:2.11.6-alpine
+    profiles: [ui]
+    restart: unless-stopped
+    depends_on:
+      ui: { condition: service_healthy }
+    environment:
+      FS_DOMAIN: ${FS_DOMAIN:?set FS_DOMAIN (e.g. fraud.example.com) in .env}
+      FS_UI_USER: ${FS_UI_USER:-analyst}
+      FS_UI_PASSWORD_HASH: ${FS_UI_PASSWORD_HASH:?set FS_UI_PASSWORD_HASH (caddy hash-password) in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./infra/deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    mem_limit: 128m
+
+volumes:
+  caddy-data:
+  caddy-config:

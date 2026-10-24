@@ -1,0 +1,71 @@
+# 8 GB laptop profile, used on top of compose.yml:
+#   make up-lite   (= docker compose -f compose.yml -f compose.lite.yml --profile core --profile mlops up)
+# Differences from the full stack (ADR-0014):
+# * Redpanda with --memory 512M;
+# * no Prefect server: the worker runs Prefect's ephemeral API in-process (SQLite), so the weekly
+#   retrain and daily drift schedules still fire, without the server UI;
+# * MLflow on a SQLite file + local artifact volume (MLflow >= 3.13 has no plain file store);
+# * no Postgres: cases live in the API's in-memory store (FRAUDSHIELD_CASES__STORE=memory);
+# * lower memory limits; Redpanda Console is left out.
+name: fraudshield
+
+services:
+  redpanda:
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=512M
+      - --overprovisioned
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --default-log-level=warn
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:${FS_KAFKA_PORT:-19092}
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+    mem_limit: 896m
+
+  console:
+    profiles: !override [full]  # not started by up-lite
+
+  redis:
+    mem_limit: 384m
+
+  shadow:
+    mem_limit: 384m
+
+  postgres:
+    profiles: !override [full]  # not started by up-lite
+
+  prefect-server:
+    profiles: !override [full]  # not started by up-lite
+
+  mlflow:
+    depends_on: !reset {}
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --artifacts-destination=/mlartifacts
+      - --serve-artifacts
+      - --host=0.0.0.0
+      - --port=5000
+      - --workers=1
+      - --allowed-hosts=mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000,localhost:${FS_MLFLOW_PORT:-5050}
+    volumes:
+      - mlflow-artifacts:/mlartifacts
+      - mlflow-db:/mlflow
+    mem_limit: 768m
+
+  prefect-worker:
+    depends_on: !override
+      mlflow: { condition: service_healthy }
+    environment:
+      PREFECT_API_URL: !reset null  # unset: ephemeral in-process API
+      PREFECT_HOME: /app/artifacts/prefect  # SQLite on the worker volume
+    mem_limit: 2g
+
+volumes:
+  mlflow-db:

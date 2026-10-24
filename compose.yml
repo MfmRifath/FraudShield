@@ -4,13 +4,15 @@
 #   make up-all     -> + profile "monitoring": prometheus (:9090), grafana (:3000)
 #   make up-ui      -> + profile "ui": analyst UI (nginx :5180; /api proxied to the API)
 # Every service has a healthcheck and a memory limit; all images are multi-arch (amd64/arm64).
+# Images: local builds by default; FS_IMAGE_PREFIX=ghcr.io/<owner>/ FS_TAG=<sha> pulls the CD images
+# instead (docker compose pull; see docs/deploy/arm-vm.md).
 # Host ports are overridable: FS_KAFKA_PORT, FS_REDIS_PORT (6380), FS_MLFLOW_PORT (5050; macOS AirPlay
 # holds 5000), FS_PG_PORT (5433), FS_PREFECT_PORT, FS_API_PORT, FS_CONSOLE_PORT, ...
 
 name: fraudshield
 
 x-app: &app
-  image: fraudshield-api:dev
+  image: ${FS_IMAGE_PREFIX:-}fraudshield-api:${FS_TAG:-dev}
   build: .
   restart: unless-stopped
   volumes:
@@ -30,6 +32,8 @@ x-app: &app
     FRAUDSHIELD_SERVING__FEATURE_STORE: redis
     FRAUDSHIELD_SERVING__PUBLISHER: kafka
     FRAUDSHIELD_SERVING__UPDATE_STORE_INLINE: "false"
+    # 10 ms budget; the integration targets relax it: they test feature correctness, not latency
+    FRAUDSHIELD_SERVING__FEATURE_TIMEOUT_MS: ${FS_FEATURE_TIMEOUT_MS:-10}
     FRAUDSHIELD_SERVING__ADMIN_TOKEN: ${FS_ADMIN_TOKEN:-change-me-locally}
     FRAUDSHIELD_STREAMING__BOOTSTRAP_SERVERS: redpanda:9092
     FRAUDSHIELD_STREAMING__REDIS_URL: redis://redis:6379/0
@@ -225,7 +229,7 @@ services:
     mem_limit: 512m
 
   mlflow:
-    image: fraudshield-mlflow:dev
+    image: ${FS_IMAGE_PREFIX:-}fraudshield-mlflow:${FS_TAG:-dev}
     build: infra/mlflow
     profiles: [mlops]
     depends_on:
@@ -279,7 +283,7 @@ services:
 
   prefect-worker:
     <<: *app
-    image: fraudshield-trainer:dev
+    image: ${FS_IMAGE_PREFIX:-}fraudshield-trainer:${FS_TAG:-dev}
     build:
       context: .
       target: trainer
@@ -357,7 +361,7 @@ services:
 
   # ---------------------------------------------------------------- ui profile
   ui:
-    image: fraudshield-ui:dev
+    image: ${FS_IMAGE_PREFIX:-}fraudshield-ui:${FS_TAG:-dev}
     build: ui
     profiles: [ui]
     restart: unless-stopped

@@ -69,8 +69,16 @@ IT_MARKERS ?= integration and not mlops and not monitoring and not ui
 TEST_IMAGE_RUN = docker run --rm -v "$(CURDIR)":/app -v fraudshield-test-venv:/venv \
 	-v fraudshield-test-uvcache:/root/.cache/uv -e PYTHONDONTWRITEBYTECODE=1 -e MLFLOW_DISABLE_AGENT_HINT=1
 
+# Integration tests check streaming feature correctness (served == offline for every event), so the
+# stack they bring up gets a 100 ms feature budget: a CPU-starved laptop otherwise sends the odd
+# event down the degraded path. The 10 ms budget is covered by the fallback tests and `make loadtest`.
+test-integration test-integration-mlops test-integration-all test-integration-lite: export FS_FEATURE_TIMEOUT_MS = 100
+
 .PHONY: test-integration
-test-integration: up ## Compose integration tests (test container on the compose network)
+test-integration: up test-integration-run ## Compose integration tests (test container on the compose network)
+
+.PHONY: test-integration-run
+test-integration-run: ## Integration tests against whatever stack is running (no `up`)
 	$(TEST_IMAGE_RUN) --network fraudshield_default \
 		-e FRAUDSHIELD_STREAMING__BOOTSTRAP_SERVERS=redpanda:9092 \
 		-e FRAUDSHIELD_STREAMING__REDIS_URL=redis://redis:6379/0 \
@@ -211,18 +219,37 @@ down: ## Stop the stack (keeps volumes; `make down-v` also deletes them)
 .PHONY: down-v
 down-v: ## Stop the stack and delete its volumes
 	$(COMPOSE) $(ALL_PROFILES) down -v
+	docker volume rm -f fraudshield_mlflow-db >/dev/null  # lite-only volume
 
 .PHONY: ps
 ps: ## Stack status
 	$(COMPOSE) $(PROFILES) ps
 
+LITE = -f compose.yml -f compose.lite.yml
 .PHONY: up-lite
-up-lite: ## docker compose up with the 8 GB lite profile
-	$(call not_yet,Phase 8)
+up-lite: ## 8 GB profile: core + MLflow (SQLite) + Prefect worker (ephemeral API); no Postgres/Prefect server
+	@test -f artifacts/dev/bundle/bundle.json || $(MAKE) dev-bundle
+	FS_CASE_STORE=memory $(COMPOSE) $(LITE) --profile core --profile mlops up -d --build --wait
 
+.PHONY: test-integration-lite
+test-integration-lite: ## Core integration tests against the lite stack
+	$(MAKE) up-lite
+	$(MAKE) test-integration-run IT_MARKERS="integration and not mlops and not monitoring and not ui"
+
+DEMO_COMPOSE = docker compose -f compose.demo.yml
 .PHONY: demo
-demo: ## Single-container demo (FastAPI + replayer + in-memory store + UI)
-	$(call not_yet,Phase 8)
+demo: ## ONE container: API + in-process replayer + in-memory stores + UI -> http://localhost:8088
+	$(DEMO_COMPOSE) up -d --build --wait
+	@echo "FraudShield demo: http://localhost:$${FS_DEMO_PORT:-8088}  (API under /api; stop: make demo-down)"
+
+.PHONY: demo-down
+demo-down: ## Stop the demo container
+	$(DEMO_COMPOSE) down
+
+.PHONY: demo-check
+demo-check: ## Demo at 50 tx/s for 3 min: UI/API up and memory < 1 GiB -> reports/demo/
+	FS_DEMO_RATE=50 $(DEMO_COMPOSE) up -d --build --wait --force-recreate
+	$(RUN) python scripts/demo_check.py $(DEMO_CHECK_ARGS)
 
 RATE ?= 50
 SOURCE ?= fixture
@@ -236,6 +263,17 @@ drift-demo: up-all ## Normal replay, then fraud-ring drift -> drift job -> Drift
 		-e PREFECT_API_URL=http://prefect-server:4200/api fraudshield-test:dev \
 		sh -c 'uv sync --frozen -q && uv run --frozen python scripts/drift_demo.py'
 
+.PHONY: loadtest-bundles
+loadtest-bundles: ## Production-sized synthetic bundles + payloads -> artifacts/loadtest (in Docker)
+	docker build -q -t fraudshield-test:dev -f infra/dev/Dockerfile.test infra/dev >/dev/null
+	$(TEST_IMAGE_RUN) fraudshield-test:dev sh -c 'uv sync --frozen -q && uv run --frozen python -m fraudshield.devtools loadtest-bundles'
+
+LOADTEST_ARGS ?=
 .PHONY: loadtest
-loadtest: ## Locust scenarios + markdown report
-	$(call not_yet,Phase 8)
+loadtest: ## Locust: normal / no reason codes / Redis killed -> reports/loadtest (LOADTEST_ARGS="--users 20 ...")
+	@test -f artifacts/loadtest/bundle/bundle.json || $(MAKE) loadtest-bundles
+	docker build -q -t fraudshield-test:dev -f infra/dev/Dockerfile.test infra/dev >/dev/null
+	$(TEST_IMAGE_RUN) fraudshield-test:dev uv sync --frozen -q  # venv volume used by the Locust container
+	FS_BUNDLE_SET=loadtest $(MAKE) up
+	$(RUN) python -m fraudshield.loadtest run $(LOADTEST_ARGS)
+	@echo "The stack still serves the load-test bundle; 'make up' switches back to the dev bundle."

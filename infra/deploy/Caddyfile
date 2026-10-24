@@ -1,0 +1,16 @@
+# TLS + basic auth in front of the analyst UI (nginx in the `ui` service also proxies /api).
+{$FS_DOMAIN} {
+	encode zstd gzip
+	basic_auth {
+		{$FS_UI_USER} {$FS_UI_PASSWORD_HASH}
+	}
+	reverse_proxy ui:8080 {
+		flush_interval -1 # stream SSE (/api/events/stream) without buffering
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		X-Frame-Options DENY
+	}
+}
