@@ -1,0 +1,89 @@
+"""Online (store + per-event executor) vs offline (vectorised) feature parity.
+
+Spec: replay a 2,000-event fixture through the online path; max |diff| < 1e-6 per feature.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import math
+from pathlib import Path
+from typing import Any
+
+import polars as pl
+import pytest
+from hypothesis import given
+
+from fraudshield.adapters import get_adapter
+from fraudshield.config import Settings
+from fraudshield.features.definitions import FeatureSet, build_feature_set
+from fraudshield.features.offline import compute_offline
+from fraudshield.features.online import OnlineSpec
+from fraudshield.features.store import InMemoryFeatureStore, replay
+from tests.strategies import EXTRA_NAMES, canonical_frames
+
+FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "sparkov_sample.csv"
+TOL = 1e-6
+
+
+def max_abs_diff(
+    online: list[dict[str, Any]], offline: list[dict[str, Any]], names: list[str]
+) -> dict[str, float]:
+    """Per-feature max |online - offline|; inf if null-ness or a categorical value disagrees."""
+    worst = dict.fromkeys(names, 0.0)
+    for a_row, b_row in zip(online, offline, strict=True):
+        for n in names:
+            a, b = a_row[n], b_row[n]
+            if a is None or b is None:
+                d = 0.0 if a is None and b is None else math.inf
+            elif isinstance(a, str) or isinstance(b, str):
+                d = 0.0 if a == b else math.inf
+            else:
+                d = abs(float(a) - float(b))
+            worst[n] = max(worst[n], d)
+    return worst
+
+
+def _parity(df: pl.DataFrame, fs: FeatureSet) -> dict[str, float]:
+    offline = compute_offline(df, fs).select(fs.names).to_dicts()
+    store = InMemoryFeatureStore(OnlineSpec.from_feature_set(fs))
+    online = asyncio.run(replay(store, df.to_dicts(), fs))
+    return max_abs_diff(online, offline, fs.names)
+
+
+@pytest.mark.parity
+def test_parity_on_2000_event_sparkov_fixture() -> None:
+    s = Settings()
+    df = get_adapter("sparkov", s).load([FIXTURE])
+    assert df.height == 2000
+    fs = build_feature_set(s.datasets.sparkov.extra_columns, s.features.target_encoding_smoothing)
+    worst = _parity(df, fs)
+    bad = {k: v for k, v in worst.items() if not v < TOL}
+    assert not bad, f"features over tolerance: {bad}"
+
+
+@pytest.mark.parity
+@given(df=canonical_frames)
+def test_parity_on_generated_frames(df: pl.DataFrame) -> None:
+    """Generated data has devices/emails/ties/window-edge offsets that Sparkov lacks."""
+    worst = _parity(df, build_feature_set(EXTRA_NAMES, 5.0))
+    bad = {k: v for k, v in worst.items() if not v < TOL}
+    assert not bad, f"features over tolerance: {bad}"
+
+
+@pytest.mark.parity
+def test_online_spec_requirements() -> None:
+    spec = OnlineSpec.from_feature_set(build_feature_set(EXTRA_NAMES, 5.0))
+    assert spec.history_fields == {
+        "device_info": ("uid",),
+        "p_email_domain": ("uid",),
+        "uid": ("addr", "amount", "device_info", "p_email_domain"),
+    }
+    assert spec.retention_us == {
+        "uid": 7 * 86_400 * 10**6,
+        "device_info": 7 * 86_400 * 10**6,
+        "p_email_domain": 7 * 86_400 * 10**6,
+    }
+    assert spec.first_seen == (("uid", "addr"), ("uid", "device_info"), ("uid", "p_email_domain"))
+    assert spec.last_time == ("uid",)
+    assert spec.te_columns == ("addr", "device_info", "p_email_domain")
