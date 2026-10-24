@@ -13,3 +13,4 @@ Status: Proposed | Accepted | Superseded by ADR-NNNN.
 | [0006](0006-feature-library-design.md) | Declarative feature specs, offline executor, reproducibility hashes | Accepted |
 | [0007](0007-phase1-dependency-versions.md) | Phase 1 dependency choices (Polars 2, DuckDB 2, no pandas yet) | Accepted |
 | [0008](0008-modeling-policy-and-packaging.md) | Modeling, decision policy and model packaging | Accepted |
+| [0009](0009-serving-design.md) | Serving design (online features, fallbacks, packaging) | Accepted |

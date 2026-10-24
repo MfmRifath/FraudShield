@@ -4,7 +4,7 @@
 
 ## Current phase
 
-**Phase 2: Modeling: code complete, awaiting review.** Next: Phase 3 (Serving), only after the user types "continue". Real-data DoD items are deferred (rule 9).
+**Phase 3: Serving: complete, awaiting review.** Next: Phase 4 (Streaming), only after the user types "continue". Real-data DoD items are deferred (rule 9).
 IEEE-CIS raw data is **not downloaded yet** (needs the user's Kaggle token + accepted competition rules). Sparkov was downloaded and built in Phase 1.
 
 ## Goal
@@ -54,13 +54,18 @@ src/fraudshield/rules.py       # hard rules (configs/rules.yaml): row + frame ev
 src/fraudshield/reasons.py     # reason groups/labels + top-3 grouped reasons from pred_contrib
 src/fraudshield/model_bundle.py  # deployable artifact: full.txt + degraded.txt + bundle.json (no pickles)
 src/fraudshield/training/      # splits, matrix (CategoryEncoder), models, calibrate, costs (policy), evaluate, tune, package (MLflow pyfunc), model_card, train
+src/fraudshield/features/online.py, store.py  # OnlineSpec + compute_online (pure); FeatureStore protocol, InMemoryFeatureStore, replay()
+src/fraudshield/serving/       # app (FastAPI factory), scorer (pipeline + fallbacks), models (slots, canary, reload), breaker, events (publisher, SSE), metrics, schemas
+src/fraudshield/cases/store.py # Case model, CaseStore protocol, InMemoryCaseStore (Postgres in Phase 7)
+src/fraudshield/synthetic.py   # planted-signal synthetic data + build_synthetic_bundle (tests, benchmark; never a reported model)
+Dockerfile                     # API image (core deps only, non-root, libgomp1); run: uvicorn --factory fraudshield.serving.app:create_app
 configs/costs.yaml, configs/rules.yaml, configs/tuned/<ds>.json (written by `make tune`)
 configs/                       # base.yaml (+ costs.yaml, rules.yaml, ... in later phases)
 data/{raw,interim,processed}/  # git-ignored except .gitkeep: raw/<ds>/, interim/<ds>/transactions.parquet, processed/<ds>/features.parquet
 data/manifests/                # COMMITTED: <ds>.raw.json, <ds>.features.json
 scripts/make_sparkov_fixture.py -> tests/fixtures/sparkov_sample.csv (2,000 raw CC0 rows, committed)
 tests/oracle.py, tests/strategies.py  # brute-force feature oracle + hypothesis strategies
-tests/synthetic.py             # planted-signal synthetic data for the training smoke test (not a benchmark)
+tests/serving_support.py       # serving test helpers; tests/parity/ = online vs offline
 infra/dev/Dockerfile.test      # Linux test runner (`make test-docker`)
 tests/{unit,parity,integration,fixtures}/
 ui/  infra/{prometheus,grafana,nginx,deploy}/  loadtest/  notebooks/  scripts/  reports/
@@ -84,6 +89,11 @@ docs/adr/  docs/img/
 - **Model artifacts**: serving loads `ModelBundle` (LightGBM text + JSON). MLflow pyfunc wraps it; promotion uses aliases `@champion`/`@challenger`. Predict with `num_threads=1`.
 - **Warning filters** (`[tool.pytest] filterwarnings`): only narrow, commented third-party entries (message + category + module where possible). Never blanket-ignore.
 - **LightGBM on macOS** needs `brew install libomp`; without it pytest stops with a UsageError. `make test-docker` runs everything in Linux.
+- **Dependency groups**: core `[project.dependencies]` = data + serving (incl. `mlflow-skinny`); `train` group = sklearn/optuna/mlflow/pandas/shap/matplotlib. Serving code must NOT import train-group libs at module level (sklearn import in `calibrate.fit_calibrator` is lazy). Docker image: `uv sync --no-dev --no-default-groups`.
+- **Online features**: new history features must work through `OnlineSpec`/`compute_online` and pass `tests/parity` (< 1e-6). Stores keep state only.
+- **Serving never 5xx** for internal faults: fallbacks are feature store -> degraded booster -> rules-only; unknown error -> `review` + `fallback=internal_error`. Validation errors are 422.
+- **Benchmarks** must report the model actually measured (trees, mean leaves/tree); synthetic easy data grows stumps, so `build_synthetic_bundle(label_noise=0.3)` for latency work.
+- **Avoid `# fmt: skip` inside expressions** (ruff RUF028); use it only on statements.
 
 ## Commands
 
@@ -99,6 +109,8 @@ make features-check DATASET=sparkov  # rebuild, fail unless hashes == committed 
 make fixture           # regenerate the Sparkov test fixture (deterministic)
 make eda DATASET=sparkov        # execute notebooks/01_eda.ipynb in place
 make test-docker       # lint + tests in Linux (no local libomp needed)
+make bench-docker      # in-process /score latency -> reports/benchmarks/serving_inprocess.md (synthetic bundle)
+docker build -t fraudshield-api .   # API image; mount artifacts/ and set FRAUDSHIELD_CONFIG
 make tune DATASET=..   # Optuna -> configs/tuned/<ds>.json      (real data: deferred)
 make train DATASET=..  # train + evaluate + MLflow + @challenger (real data: deferred)
 make docs DATASET=..   # docs/model_card.md from reports/<ds>/metrics.json
@@ -132,6 +144,11 @@ uv run pre-commit run --all-files
 | pandas / pandas-stubs | 3.1.0 / 3.0.5.260914 | pyfunc I/O only |
 | shap | 0.54.1 | offline only (no numba dependency in 0.54) |
 | matplotlib | 3.11.2 | report plots (Agg backend) |
+| fastapi / starlette | 0.162.0 / 1.9.0 | native SSE (`fastapi.sse`); `ORJSONResponse` deprecated; lifespan only (no `on_event`) |
+| uvicorn / uvloop / httptools | 0.54.0 / 0.23.0 / 0.9.0 | |
+| orjson / prometheus-client | 3.13.0 / 0.26.0 | |
+| mlflow-skinny | 3.17.2 | serving: registry alias lookup + artifact download |
+| httpx2 (dev) | 2.16.0 | Starlette 1.9 TestClient backend (replaces httpx) |
 | kagglehub | 1.0.3 | `data` group |
 | matplotlib / jupyterlab / ipykernel | 3.11.2 / 4.6.4 / 7.4.0 | `notebooks` group |
 | GH Actions | checkout@v7, setup-uv@v10, upload-artifact@v7 | SHA pinning in Phase 8 |
@@ -148,3 +165,4 @@ Stack gotchas to respect when these are added later: Evidently 0.7+ new API (`fr
 - [ADR-0006](docs/adr/0006-feature-library-design.md): declarative specs, Polars+DuckDB executor, oracle tests, manifests/hashes
 - [ADR-0007](docs/adr/0007-phase1-dependency-versions.md): Polars 2 / DuckDB 2 adopted with mitigations; pandas deferred
 - [ADR-0008](docs/adr/0008-modeling-policy-and-packaging.md): data use per window, baselines, calibration, cost policy + capacity, metric definitions, no-pickle bundle, reason codes
+- [ADR-0009](docs/adr/0009-serving-design.md): online executor/store split, pipeline + fallbacks, capacity online, model slots/canary/reload, events, dependency split, benchmark method
