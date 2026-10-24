@@ -28,6 +28,8 @@ _offsets = st.one_of(
 )
 
 
+# Value pools deliberately overlap across columns ("10", "d0" appear as device AND addr) so a
+# store that mixes per-column state (e.g. one seen-set for all columns) produces wrong features.
 @st.composite
 def raw_rows(draw: st.DrawFn, min_size: int = 1, max_size: int = 40) -> list[dict[str, Any]]:
     n = draw(st.integers(min_size, max_size))
@@ -43,8 +45,8 @@ def raw_rows(draw: st.DrawFn, min_size: int = 1, max_size: int = 40) -> list[dic
                 "p_email_domain": draw(st.sampled_from([None, "gmail.com", "mail.ru", "x.org"])),
                 "r_email_domain": draw(st.sampled_from([None, "gmail.com", "mail.ru"])),
                 "device_type": draw(st.sampled_from([None, "mobile", "desktop"])),
-                "device_info": draw(st.sampled_from([None, "d0", "d1", "d2"])),
-                "addr": draw(st.sampled_from([None, "10", "20", "30"])),
+                "device_info": draw(st.sampled_from([None, "d0", "d1", "10"])),
+                "addr": draw(st.sampled_from([None, "10", "20", "d0"])),
                 "label": draw(st.sampled_from([None, 0, 0, 1])),
                 "x_c1": draw(st.one_of(st.none(), st.floats(-5, 5, allow_nan=False))),
             }

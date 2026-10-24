@@ -87,3 +87,55 @@ def test_online_spec_requirements() -> None:
     assert spec.first_seen == (("uid", "addr"), ("uid", "device_info"), ("uid", "p_email_domain"))
     assert spec.last_time == ("uid",)
     assert spec.te_columns == ("addr", "device_info", "p_email_domain")
+
+
+# ------------------------------------------------------------------ Redis-backed store
+def _redis_stores(fs: FeatureSet) -> tuple[Any, Any]:
+    import fakeredis
+
+    from fraudshield.features.redis_store import RedisFeatureStore, SyncRedisFeatureWriter
+
+    server = fakeredis.FakeServer()
+    spec = OnlineSpec.from_feature_set(fs)
+    reader = RedisFeatureStore(spec, fakeredis.FakeAsyncRedis(server=server))
+    writer = SyncRedisFeatureWriter(spec, fakeredis.FakeRedis(server=server))
+    return reader, writer
+
+
+@pytest.mark.parity
+def test_parity_redis_store_on_2000_event_fixture() -> None:
+    """Same replay as above through RedisFeatureStore (async reads + writes, fakeredis)."""
+    s = Settings()
+    df = get_adapter("sparkov", s).load([FIXTURE])
+    fs = build_feature_set(s.datasets.sparkov.extra_columns, s.features.target_encoding_smoothing)
+    reader, _ = _redis_stores(fs)
+    offline = compute_offline(df, fs).select(fs.names).to_dicts()
+    online = asyncio.run(replay(reader, df.to_dicts(), fs))
+    bad = {k: v for k, v in max_abs_diff(online, offline, fs.names).items() if not v < TOL}
+    assert not bad, f"features over tolerance: {bad}"
+
+
+@pytest.mark.parity
+@given(df=canonical_frames)
+def test_parity_redis_reader_with_processor_writer(df: pl.DataFrame) -> None:
+    """API-style async reads + processor-style sync writes share one Redis: still exact."""
+    from fraudshield.features.online import compute_online
+
+    fs = build_feature_set(EXTRA_NAMES, 5.0)
+    reader, writer = _redis_stores(fs)
+    offline = compute_offline(df, fs).select(fs.names).to_dicts()
+
+    async def run() -> list[dict[str, Any]]:
+        out = []
+        for row in df.to_dicts():
+            out.append(compute_online(row, await reader.fetch(row), fs))
+            writer.update(row)
+            if row["label"] is not None:
+                attrs = {c: row[c] for c in reader.spec.te_columns}
+                writer.add_label(int(row["label"]), row["label_available_time"], attrs)
+        return out
+
+    bad = {
+        k: v for k, v in max_abs_diff(asyncio.run(run()), offline, fs.names).items() if not v < TOL
+    }
+    assert not bad, f"features over tolerance: {bad}"
