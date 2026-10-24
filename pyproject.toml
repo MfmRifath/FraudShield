@@ -39,7 +39,7 @@ train = [
     "matplotlib==3.11.2",
     "mlflow==3.17.2",
     "optuna==5.0.0",
-    "pandas==3.1.0",
+    "pandas==2.3.3",
     "scikit-learn==1.9.1",
     "shap==0.54.1",
 ]
@@ -51,7 +51,7 @@ dev = [
     "httpx2==2.16.0",
     "hypothesis==6.170.8",
     "mypy==2.4.0",
-    "pandas-stubs==3.0.5.260914",
+    "pandas-stubs==2.3.3.260113",
     "pre-commit==4.7.0",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
@@ -65,6 +65,9 @@ notebooks = [
 orchestration = [
     "prefect==3.8.8",
 ]
+monitoring = [
+    "evidently==0.7.23",
+]
 
 [build-system]
 requires = ["hatchling==1.32.4"]
@@ -75,7 +78,7 @@ packages = ["src/fraudshield"]
 
 [tool.uv]
 required-version = ">=0.12.23,<0.13"
-default-groups = ["dev", "data", "train", "orchestration"]
+default-groups = ["dev", "data", "train", "orchestration", "monitoring"]
 
 # ---------------------------------------------------------------- ruff
 [tool.ruff]
@@ -126,7 +129,7 @@ warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
 [[tool.mypy.overrides]]
-module = ["kagglehub", "kagglehub.*", "confluent_kafka", "confluent_kafka.*", "lightgbm", "lightgbm.*", "sklearn", "sklearn.*", "shap", "shap.*"]
+module = ["kagglehub", "kagglehub.*", "evidently", "evidently.*", "confluent_kafka", "confluent_kafka.*", "lightgbm", "lightgbm.*", "sklearn", "sklearn.*", "shap", "shap.*"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]
@@ -146,6 +149,7 @@ markers = [
     "smoke: small end-to-end training/serving runs",
     "integration: requires docker compose services",
     "mlops: requires the compose mlops profile (postgres, mlflow, prefect)",
+    "monitoring: requires the compose monitoring profile (prometheus, grafana)",
     "slow: takes more than a few seconds",
 ]
 filterwarnings = [
@@ -155,8 +159,13 @@ filterwarnings = [
     "ignore:.*Any type hint is inferred as AnyType:UserWarning",
     # mlflow's SQLAlchemy tracking store uses a loader option deprecated in SQLAlchemy 2.1
     "ignore:.*``noload`` loader strategy is deprecated:sqlalchemy.exc.SADeprecationWarning",
-    # mlflow 3.17 input-example serialisation compares columns to range() (pandas 3 deprecation)
-    "ignore:Operation with range is deprecated:pandas.errors.Pandas4Warning:mlflow.models.utils",
+    # evidently 0.7.23 at import: touches numpy.core, and one module has an invalid "\d" escape
+    # (compile-time SyntaxWarning; our own code is guarded by ruff W605)
+    "ignore:numpy.core is deprecated:DeprecationWarning",
+    "ignore:invalid escape sequence:SyntaxWarning",
+    # evidently imports litestar (its UI server), which uses its own deprecated DI helpers;
+    # this category is raised only by litestar
+    "ignore::litestar.exceptions.base_exceptions.LitestarDeprecationWarning",
 ]
 
 # ---------------------------------------------------------------- coverage
