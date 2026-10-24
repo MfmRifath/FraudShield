@@ -1,0 +1,144 @@
+"""Retrain -> @challenger -> gate (incl. shadow comparison) -> promote, and rollback.
+
+Plain functions; the Prefect flows in ``fraudshield.flows`` wrap them, and the CLI calls them
+directly (lite profile, tests).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import polars as pl
+import requests
+
+from fraudshield.config import DatasetConfig, DatasetName, Settings
+from fraudshield.manifest import FeaturesManifest, read_json
+from fraudshield.mlops.gate import GateResult, run_gate
+from fraudshield.mlops.registry import AliasMove, Registry, RegistryError
+from fraudshield.mlops.training_set import build_training_set
+from fraudshield.pipeline import DatasetPaths, feature_set_for
+from fraudshield.training.costs import CostConfig
+from fraudshield.training.train import TrainResult, prepare_splits, run_training
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class PromotionOutcome:
+    gate: GateResult
+    challenger: str
+    champion_before: str | None
+    promoted: bool
+    report: Path | None
+
+
+def retrain(
+    settings: Settings,
+    dataset: DatasetName,
+    *,
+    features: pl.DataFrame | None = None,
+    analyst: pl.DataFrame | None = None,
+    as_of: datetime | None = None,
+    ds_cfg: DatasetConfig | None = None,
+    report_dir: Path | None = None,
+    bundle_dir: Path | None = None,
+) -> tuple[TrainResult, dict[str, Any]]:
+    """Training set as of ``as_of`` (default: last event) -> train -> register -> @challenger."""
+    paths = DatasetPaths.of(settings, dataset)
+    provenance: dict[str, str] = {}
+    if features is None:
+        feats = pl.read_parquet(paths.features)
+        m = read_json(FeaturesManifest, paths.features_manifest)
+        provenance = {
+            "raw_manifest_hash": m.raw_manifest_hash,
+            "features_sha256": m.features_sha256,
+        }
+    else:
+        feats = features
+    last_event: datetime = feats["event_time"].max()  # type: ignore[assignment]
+    cutoff = as_of if as_of is not None else last_event
+    train_set, stats = build_training_set(feats, analyst, cutoff)
+    log.info("training set as of %s: %s", cutoff, stats.as_dict())
+    result = run_training(
+        settings, dataset, features=train_set, ds_cfg=ds_cfg, register=True,
+        report_dir=report_dir, bundle_dir=bundle_dir, provenance=provenance,
+    )  # fmt: skip
+    return result, stats.as_dict()
+
+
+def reload_api(settings: Settings) -> bool:
+    url, token = settings.mlops.api_url, settings.serving.admin_token
+    if not url or token is None:
+        return False
+    try:
+        r = requests.post(
+            url.rstrip("/") + "/admin/reload",
+            headers={"X-Admin-Token": token.get_secret_value()},
+            timeout=30,
+        )
+    except requests.RequestException as e:
+        log.warning("API reload failed: %s", e)
+        return False
+    if r.status_code != 200:
+        log.warning("API reload returned %d: %s", r.status_code, r.text[:200])
+    return r.status_code == 200
+
+
+def promote(
+    settings: Settings,
+    dataset: DatasetName,
+    *,
+    test: pl.DataFrame | None = None,
+    parity_canonical: pl.DataFrame | None = None,
+    ds_cfg: DatasetConfig | None = None,
+    registry: Registry | None = None,
+    report_dir: Path | None = None,
+    force: bool = False,
+) -> PromotionOutcome:
+    """Gate @challenger against @champion; move @champion if every check passes (or ``force``)."""
+    reg = registry or Registry.from_settings(settings)
+    ch_v = reg.version_of(reg.challenger)
+    if ch_v is None:
+        raise RegistryError(f"no @{reg.challenger} version registered")
+    cp_v = reg.version_of(reg.champion)
+    if ch_v == cp_v:
+        raise RegistryError(f"@{reg.challenger} (v{ch_v}) is already @{reg.champion}")
+    challenger = reg.load_bundle(ch_v)
+    champion = reg.load_bundle(cp_v) if cp_v is not None else None
+    paths = DatasetPaths.of(settings, dataset)
+    if test is None:
+        test = prepare_splits(
+            pl.read_parquet(paths.features), ds_cfg or settings.datasets.get(dataset)
+        )["test"]
+    if parity_canonical is None:
+        parity_canonical = pl.read_parquet(paths.canonical).head(settings.mlops.parity_rows)
+    gate = run_gate(challenger, champion, test, parity_canonical, feature_set_for(settings, dataset),
+                    CostConfig.load(settings.paths.costs), settings.mlops)  # fmt: skip
+    promoted = gate.passed or force
+    if promoted:
+        reg.promote(ch_v)
+        reload_api(settings)
+    out_dir = report_dir or settings.paths.reports / dataset / "promotions"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    report = out_dir / f"{stamp}-v{ch_v}.md"
+    report.write_text(
+        f"# Promotion check: v{ch_v} (@{reg.challenger}) vs v{cp_v} (@{reg.champion})\n\n"
+        f"_Generated by `fraudshield promote` at {stamp}._\n\n{gate.to_markdown()}\n"
+        f"Outcome: {'promoted' if promoted else 'not promoted'}{' (forced)' if force and not gate.passed else ''}.\n"
+    )
+    (out_dir / f"{stamp}-v{ch_v}.json").write_text(
+        json.dumps(gate.as_dict() | {"promoted": promoted}, indent=2, default=str) + "\n"
+    )
+    return PromotionOutcome(gate, ch_v, cp_v, promoted, report)
+
+
+def rollback(settings: Settings, registry: Registry | None = None) -> AliasMove:
+    move = (registry or Registry.from_settings(settings)).rollback()
+    reload_api(settings)
+    return move

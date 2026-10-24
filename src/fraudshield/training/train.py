@@ -142,8 +142,10 @@ def _setup_mlflow(settings: Settings) -> None:
     t = settings.training
     mlflow.set_tracking_uri(t.mlflow_tracking_uri)
     if mlflow.get_experiment_by_name(t.experiment) is None:
-        location = t.mlflow_artifact_location
-        if "://" not in location:
+        # Empty location: let an MLflow *server* choose (proxied `mlflow-artifacts:/`); a local
+        # path only makes sense with a local (SQLite) tracking store.
+        location: str | None = t.mlflow_artifact_location or None
+        if location is not None and "://" not in location:
             location = Path(location).resolve().as_uri()
         mlflow.create_experiment(t.experiment, artifact_location=location)
     mlflow.set_experiment(t.experiment)
@@ -158,7 +160,9 @@ def run_training(
     register: bool = True,
     report_dir: Path | None = None,
     bundle_dir: Path | None = None,
+    provenance: dict[str, str] | None = None,
 ) -> TrainResult:
+    """``provenance`` (raw_manifest_hash, features_sha256) labels an in-memory ``features`` frame."""
     ds = ds_cfg or settings.datasets.get(dataset)
     paths = DatasetPaths.of(settings, dataset)
     if features is None:
@@ -166,7 +170,9 @@ def run_training(
         manifest = read_json(FeaturesManifest, paths.features_manifest)
         raw_hash, feat_sha = manifest.raw_manifest_hash, manifest.features_sha256
     else:
-        raw_hash, feat_sha = "in-memory", "in-memory"
+        prov = provenance or {}
+        raw_hash = prov.get("raw_manifest_hash", "in-memory")
+        feat_sha = prov.get("features_sha256", "in-memory")
     report_dir = report_dir or settings.paths.reports / dataset
     bundle_dir = bundle_dir or Path("artifacts") / dataset / "bundle"
 

@@ -52,6 +52,7 @@ class PathsConfig(_Frozen):
     rules: Path = Path("configs/rules.yaml")
     tuned_params: Path = Path("configs/tuned")
     model_card: Path = Path("docs/model_card.md")
+    analyst_labels: Path = Path("data/labels/analyst_labels.parquet")
 
 
 class DayRange(_Frozen):
@@ -232,8 +233,23 @@ class StreamingConfig(_Frozen):
     challenger_bundle_dir: Path | None = None
 
 
+class MLOpsConfig(_Frozen):
+    """Retrain / promotion gate / rollback (ADR-0011)."""
+
+    champion_alias: str = "champion"
+    challenger_alias: str = "challenger"
+    pr_auc_tolerance: float = Field(default=0.005, ge=0)
+    max_single_row_p95_ms: float = Field(default=5.0, gt=0)
+    latency_bench_rows: int = Field(default=500, ge=10)
+    parity_tolerance: float = Field(default=1e-6, gt=0)
+    parity_rows: int = Field(default=2_000, ge=10)
+    api_url: str | None = Field(
+        default=None, description="API to hot-reload after promote/rollback"
+    )
+
+
 class Settings(BaseSettings):
-    """Root settings object. Later phases add sections (mlops, monitoring, ...)."""
+    """Root settings object. Later phases add sections (monitoring, ...)."""
 
     model_config = SettingsConfigDict(
         env_prefix="FRAUDSHIELD_",
@@ -253,6 +269,7 @@ class Settings(BaseSettings):
     training: TrainingConfig = TrainingConfig()
     serving: ServingConfig = ServingConfig()
     streaming: StreamingConfig = StreamingConfig()
+    mlops: MLOpsConfig = MLOpsConfig()
 
     @model_validator(mode="after")
     def _labels_mature_within_gap(self) -> Self:

@@ -7,6 +7,7 @@ import logging
 import sys
 from collections.abc import Sequence
 from datetime import datetime
+from pathlib import Path
 from typing import get_args
 
 from fraudshield.config import DatasetName, Settings, get_settings
@@ -46,6 +47,30 @@ def _parser() -> argparse.ArgumentParser:
     tune = with_dataset(sub.add_parser("tune", help="Optuna tuning -> configs/tuned/<ds>.json"))
     tune.add_argument("--trials", type=int, default=None, help="override training.tune.n_trials")
     with_dataset(sub.add_parser("model-card", help="render docs/model_card.md from the last run"))
+
+    rt = with_dataset(
+        sub.add_parser("retrain", help="training set as of now -> train -> @challenger")
+    )
+    rt.add_argument(
+        "--as-of", type=datetime.fromisoformat, default=None, help="label cutoff (UTC ISO)"
+    )
+    pr = with_dataset(
+        sub.add_parser("promote", help="gate @challenger vs @champion; promote if it passes")
+    )
+    pr.add_argument(
+        "--force", action="store_true", help="promote even if the gate fails (recorded)"
+    )
+    sub.add_parser("rollback", help="move @champion back to the previous version")
+    cn = sub.add_parser("canary", help="set the API's canary share for @challenger")
+    cn.add_argument("pct", type=int)
+    cn.add_argument("--api-url", default=None, help="defaults to mlops.api_url / streaming.api_url")
+    md = sub.add_parser(
+        "mlops-demo", help="retrain -> challenger -> gate/shadow -> promote -> rollback (synthetic)"
+    )
+    md.add_argument("--workdir", type=Path, default=Path("artifacts/mlops-demo"))
+    md.add_argument(
+        "--tracking-uri", default=None, help="MLflow server (default: SQLite in workdir)"
+    )
 
     rp = with_dataset(
         sub.add_parser("replay", help="replay transactions into Kafka (transactions.raw/.truth)")
@@ -126,13 +151,50 @@ def _replay(settings: Settings, dataset: DatasetName, args: argparse.Namespace) 
     log.info("replayed %d transactions, %d truth records", stats.raw, stats.truth)
 
 
+def _mlops(settings: Settings, dataset: DatasetName, args: argparse.Namespace) -> None:
+    import json
+
+    import requests
+
+    from fraudshield.mlops.loop import promote, retrain, rollback
+
+    if args.group == "retrain":
+        result, stats = retrain(settings, dataset, as_of=args.as_of)
+        log.info("v%s registered as @challenger (training set %s)", result.model_version, stats)
+    elif args.group == "promote":
+        out = promote(settings, dataset, force=args.force)
+        log.info(
+            "gate %s; promoted=%s; report %s",
+            "passed" if out.gate.passed else "FAILED",
+            out.promoted,
+            out.report,
+        )
+    elif args.group == "rollback":
+        move = rollback(settings)
+        log.info("@%s rolled back: v%s -> v%s", move.alias, move.before, move.after)
+    elif args.group == "canary":
+        url = (args.api_url or settings.mlops.api_url or settings.streaming.api_url).rstrip("/")
+        token = settings.serving.admin_token
+        if token is None:
+            raise FileNotFoundError("set FRAUDSHIELD_SERVING__ADMIN_TOKEN to change the canary")
+        r = requests.post(f"{url}/admin/canary", json={"pct": args.pct},
+                          headers={"X-Admin-Token": token.get_secret_value()}, timeout=10)  # fmt: skip
+        log.info("%d %s", r.status_code, r.text)
+    elif args.group == "mlops-demo":
+        from fraudshield.mlops.demo import mlops_demo
+
+        print(
+            json.dumps(mlops_demo(settings, args.workdir, args.tracking_uri), indent=2, default=str)
+        )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     settings = get_settings()
     logging.basicConfig(
         level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
-    dataset: DatasetName = args.dataset or settings.dataset
+    dataset: DatasetName = getattr(args, "dataset", None) or settings.dataset
     try:
         if args.group == "data":
             m = fetch_raw(settings, dataset, force=args.force)
@@ -149,7 +211,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             _model_card(settings, dataset)
         elif args.group == "replay":
             _replay(settings, dataset, args)
-    except (DownloadError, ReproducibilityError, FileNotFoundError) as e:
+        elif args.group in ("retrain", "promote", "rollback", "canary", "mlops-demo"):
+            _mlops(settings, dataset, args)
+    except (DownloadError, ReproducibilityError, FileNotFoundError, RuntimeError) as e:
         log.error("%s", e)
         return 1
     return 0

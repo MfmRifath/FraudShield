@@ -16,6 +16,7 @@ paths:
   rules: configs/rules.yaml
   tuned_params: configs/tuned
   model_card: docs/model_card.md
+  analyst_labels: data/labels/analyst_labels.parquet   # export of labelled review cases (Postgres in Phase 7)
 
 # Active dataset for `make data` / `make features` (override: DATASET=sparkov or FRAUDSHIELD_DATASET).
 dataset: ieee_cis
@@ -92,6 +93,18 @@ streaming:
   parquet_flush_s: 10
   parquet_max_rows: 50000
   metrics_port: 9100
+
+mlops:
+  champion_alias: champion
+  challenger_alias: challenger
+  # promotion gate (all must pass): PR-AUC >= champion - tolerance, net savings >= champion,
+  # single-row p95 predict <= max_single_row_p95_ms, online/offline parity < parity_tolerance
+  pr_auc_tolerance: 0.005
+  max_single_row_p95_ms: 5.0
+  latency_bench_rows: 500
+  parity_tolerance: 1.0e-6
+  parity_rows: 2000
+  # api_url: http://api:8000   # set in compose so promote/rollback hot-reload the API
 
 datasets:
   ieee_cis:
