@@ -3,7 +3,7 @@
 #   docker run -p 8000:8000 -v $PWD/artifacts:/app/artifacts:ro fraudshield-api
 # Installs only the core dependencies (no dev/data/train/notebook groups).
 
-FROM ghcr.io/astral-sh/uv:0.12.23-python3.12-trixie-slim AS build
+FROM ghcr.io/astral-sh/uv:0.13.5-python3.12-trixie-slim AS build
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-default-groups --no-editable
 
 # ---------------------------------------------------------------- trainer (prefect worker)
-FROM ghcr.io/astral-sh/uv:0.12.23-python3.12-trixie-slim AS build-trainer
+FROM ghcr.io/astral-sh/uv:0.13.5-python3.12-trixie-slim AS build-trainer
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
