@@ -13,6 +13,35 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-default-groups --no-editable
 
+# ---------------------------------------------------------------- trainer (prefect worker)
+FROM ghcr.io/astral-sh/uv:0.12.23-python3.12-trixie-slim AS build-trainer
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/app/.venv
+WORKDIR /app
+COPY pyproject.toml uv.lock README.md ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-default-groups --group train --group orchestration --no-install-project
+COPY src ./src
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-default-groups --group train --group orchestration --no-editable
+
+# docker build --target trainer -t fraudshield-trainer .
+FROM python:3.12.15-slim-trixie AS trainer
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 10001 app \
+    && useradd --system --uid 10001 --gid app --home-dir /app --no-create-home app \
+    && mkdir -p /app/reports /app/artifacts /app/mlartifacts /home/app && chown -R app:app /app /home/app
+WORKDIR /app
+COPY --from=build-trainer --chown=app:app /app/.venv /app/.venv
+COPY --chown=app:app configs ./configs
+COPY --chown=app:app tests/fixtures ./tests/fixtures
+ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 HOME=/home/app \
+    FRAUDSHIELD_CONFIG=/app/configs/base.yaml MLFLOW_DISABLE_AGENT_HINT=1
+USER app
+CMD ["python", "-m", "fraudshield.flows", "serve"]
+
+# ---------------------------------------------------------------- api (default target: keep last)
 FROM python:3.12.15-slim-trixie AS runtime
 # libgomp1: OpenMP runtime required by LightGBM
 RUN apt-get update \

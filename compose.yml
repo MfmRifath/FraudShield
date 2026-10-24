@@ -1,8 +1,10 @@
 # FraudShield local stack.
-#   make up       -> profile "core": redpanda, console, redis, api, processor + stream workers
-# Later phases add profiles: mlops (postgres, mlflow, prefect), monitoring (prometheus, grafana), ui.
+#   make up         -> profile "core": redpanda, console, redis, api, processor + stream workers
+#   make up-mlops   -> + profile "mlops": postgres, mlflow, prefect-server, prefect-worker
+# Later phases add profiles: monitoring (prometheus, grafana), ui.
 # Every service has a healthcheck and a memory limit; all images are multi-arch (amd64/arm64).
-# Host ports are overridable: FS_KAFKA_PORT, FS_REDIS_PORT (default 6380), FS_API_PORT, FS_CONSOLE_PORT, ...
+# Host ports are overridable: FS_KAFKA_PORT, FS_REDIS_PORT (6380), FS_MLFLOW_PORT (5050; macOS AirPlay
+# holds 5000), FS_PG_PORT (5433), FS_PREFECT_PORT, FS_API_PORT, FS_CONSOLE_PORT, ...
 
 name: fraudshield
 
@@ -17,6 +19,11 @@ x-app: &app
     FRAUDSHIELD_LOG_LEVEL: INFO
     # Until the real training run, the stack serves dev bundles trained on the CC0 fixture.
     FRAUDSHIELD_SERVING__DATASET: ${FS_DATASET:-sparkov}
+    FRAUDSHIELD_DATASET: ${FS_DATASET:-sparkov}
+    # bundle (default) | mlflow: serve models:/fraudshield@champion from the mlops profile
+    FRAUDSHIELD_SERVING__MODEL_SOURCE: ${FS_MODEL_SOURCE:-bundle}
+    FRAUDSHIELD_TRAINING__MLFLOW_TRACKING_URI: http://mlflow:5000
+    FRAUDSHIELD_TRAINING__MLFLOW_ARTIFACT_LOCATION: ""
     FRAUDSHIELD_SERVING__BUNDLE_DIR: /app/artifacts/${FS_BUNDLE_SET:-dev}/bundle
     FRAUDSHIELD_SERVING__CHALLENGER_BUNDLE_DIR: /app/artifacts/${FS_BUNDLE_SET:-dev}/challenger
     FRAUDSHIELD_SERVING__FEATURE_STORE: redis
@@ -188,6 +195,112 @@ services:
     healthcheck: *worker-health
     mem_limit: 512m
 
+  # ---------------------------------------------------------------- mlops profile
+  postgres:
+    image: postgres:18.6-alpine
+    profiles: [mlops]
+    environment:
+      POSTGRES_USER: fraudshield
+      POSTGRES_PASSWORD: ${FS_PG_PASSWORD:-fraudshield}
+      POSTGRES_DB: fraudshield
+    volumes:
+      - pg-data:/var/lib/postgresql  # Postgres 18 layout: mount the parent of the versioned dir
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${FS_PG_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fraudshield -d fraudshield"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 512m
+
+  mlflow:
+    image: fraudshield-mlflow:dev
+    build: infra/mlflow
+    profiles: [mlops]
+    depends_on:
+      postgres: { condition: service_healthy }
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri=postgresql+psycopg2://fraudshield:${FS_PG_PASSWORD:-fraudshield}@postgres:5432/mlflow
+      - --artifacts-destination=/mlartifacts
+      - --serve-artifacts
+      - --host=0.0.0.0
+      - --port=5000
+      - --workers=1  # each worker loads the full app (~0.5 GB); one is plenty locally
+      # MLflow 3.x only accepts localhost/private-IP Host headers by default (DNS-rebinding guard)
+      - --allowed-hosts=mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000,localhost:${FS_MLFLOW_PORT:-5050}
+    environment:
+      # MLflow 3.x starts ~7 background job consumers (GenAI eval/optimisation, ~150 MB each);
+      # tracking + registry do not need them.
+      MLFLOW_SERVER_ENABLE_JOB_EXECUTION: "false"
+    volumes:
+      - mlflow-artifacts:/mlartifacts
+    ports:
+      - "${FS_MLFLOW_PORT:-5050}:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    mem_limit: 1g
+
+  prefect-server:
+    image: prefecthq/prefect:3.8.8-python3.12
+    profiles: [mlops]
+    depends_on:
+      postgres: { condition: service_healthy }
+    command: ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4200"]
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://fraudshield:${FS_PG_PASSWORD:-fraudshield}@postgres:5432/prefect
+      PREFECT_UI_API_URL: http://localhost:${FS_PREFECT_PORT:-4200}/api
+      PREFECT_SERVER_ANALYTICS_ENABLED: "false"
+    ports:
+      - "${FS_PREFECT_PORT:-4200}:4200"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4200/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    mem_limit: 1g
+
+  prefect-worker:
+    <<: *app
+    image: fraudshield-trainer:dev
+    build:
+      context: .
+      target: trainer
+    profiles: [mlops]
+    command: ["python", "-m", "fraudshield.flows", "serve"]
+    depends_on:
+      prefect-server: { condition: service_healthy }
+      mlflow: { condition: service_healthy }
+    environment:
+      <<: *app-env
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_RUNNER_SERVER_ENABLE: "true"
+      PREFECT_RUNNER_SERVER_HOST: 0.0.0.0
+      PREFECT_RUNNER_SERVER_PORT: "8080"
+      FRAUDSHIELD_MLOPS__API_URL: http://api:8000
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - worker-artifacts:/app/artifacts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    mem_limit: 3g
+
 volumes:
   redpanda-data:
   stream-data:
+  pg-data:
+  mlflow-artifacts:
+  worker-artifacts:

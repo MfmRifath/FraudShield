@@ -14,6 +14,7 @@ notebooks
 ui/node_modules
 ui/dist
 tests
+!tests/fixtures
 docs
 .env
 .env.*
