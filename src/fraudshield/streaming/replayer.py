@@ -6,7 +6,8 @@
 
 Pacing: ``speed`` = event-time seconds per wall second (0 = no event-time pacing); ``rate`` =
 max events per wall second (0 = unlimited). ``namespace`` prefixes ids and entity values so
-repeated runs (e.g. integration tests) do not mix with state from earlier runs.
+repeated runs (e.g. integration tests) do not mix with state from earlier runs. ``drift_share``
+> 0 turns that share of events into a "fraud ring" (``inject_fraud_ring``) for drift demos.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ import polars as pl
 
 from fraudshield.adapters import get_adapter
 from fraudshield.config import DatasetName, Settings
+from fraudshield.labels import unit_hash
 from fraudshield.pipeline import DatasetPaths
 from fraudshield.schema import EXTRA_PREFIX
 
@@ -97,6 +99,19 @@ def truth_message(row: Mapping[str, Any], attr_columns: Iterable[str]) -> dict[s
     }
 
 
+def inject_fraud_ring(row: Mapping[str, Any], share: float, seed: int = 7) -> dict[str, Any]:
+    """Drift injection ("fraud ring"): a share of events move onto a few shared devices and one
+    email domain, with larger amounts, and are fraud. Deterministic per txn_id.
+    """
+    out = dict(row)
+    if unit_hash(str(row["txn_id"]), seed) >= share:
+        return out
+    k = int(unit_hash(str(row["txn_id"]), seed + 1) * 3)
+    out.update(device_info=f"ring-device-{k}", device_type="mobile", p_email_domain="ring-mail.example",
+               amount=round(float(row["amount"]) * 4 + 50, 2), label=1)  # fmt: skip
+    return out
+
+
 def pacing_delay(prev: datetime | None, cur: datetime, speed: float, rate: float) -> float:
     """Wall seconds to wait before sending ``cur``."""
     wait = 0.0
@@ -121,6 +136,7 @@ def replay(
     speed: float = 0.0,
     rate: float = 0.0,
     namespace: str | None = None,
+    drift_share: float = 0.0,
     attr_columns: Iterable[str] = ("p_email_domain", "device_info", "addr"),
     sleep: Callable[[float], None] = time.sleep,
 ) -> ReplayStats:
@@ -129,7 +145,7 @@ def replay(
     stats = ReplayStats()
     prev: datetime | None = None
     for row in rows:
-        r = namespaced(row, namespace)
+        r = namespaced(inject_fraud_ring(row, drift_share) if drift_share > 0 else row, namespace)
         wait = pacing_delay(prev, r["event_time"], speed, rate)
         if wait > 0:
             sleep(wait)

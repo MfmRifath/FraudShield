@@ -1,7 +1,7 @@
-"""Parquet sink: decisions -> hourly-partitioned Parquet files (the served-traffic log).
+"""Parquet sink: decisions + labels -> hourly-partitioned Parquet files (the served-traffic log).
 
-Layout: ``<parquet_dir>/decisions/date=YYYY-MM-DD/hour=HH/part-<n>-<uuid>.parquet`` by event
-time (UTC). Buffers are flushed when ``max_rows`` is reached, every ``flush_s`` by a background
+Layout: ``<parquet_dir>/{decisions,labels}/date=YYYY-MM-DD/hour=HH/part-<n>-<uuid>.parquet``,
+partitioned by event time (decisions) or label availability time (labels), UTC. Buffers are flushed when ``max_rows`` is reached, every ``flush_s`` by a background
 timer (so an idle stream still gets written), and on shutdown. Features are stored as JSON text so the schema is stable across
 datasets; monitoring (Phase 6) reads them back.
 """
@@ -41,6 +41,27 @@ SCHEMA: dict[str, pl.DataType] = {
 }
 
 
+LABEL_SCHEMA: dict[str, pl.DataType] = {
+    "txn_id": pl.String(),
+    "uid": pl.String(),
+    "label": pl.Int8(),
+    "label_source": pl.String(),
+    "label_available_time": pl.Datetime("us", "UTC"),
+}
+
+
+def to_label_record(msg: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "txn_id": msg["txn_id"],
+        "uid": msg.get("uid"),
+        "label": int(msg["label"]),
+        "label_source": msg.get("label_source"),
+        "label_available_time": parse_time(
+            msg.get("label_available_time") or msg.get("label_time")
+        ),
+    }
+
+
 def to_record(event: dict[str, Any]) -> dict[str, Any]:
     return {
         "txn_id": event["txn_id"],
@@ -66,8 +87,22 @@ class HourlyParquetWriter:
         flush_s: float,
         max_rows: int,
         clock: Callable[[], float] = time.monotonic,
+        kind: str = "decisions",
     ) -> None:
-        self.base_dir = base_dir / "decisions"
+        self.kind = kind
+        self.schema: dict[str, pl.DataType]
+        self._to_record: Callable[[dict[str, Any]], dict[str, Any]]
+        if kind == "decisions":
+            self.schema, self._to_record, self._time_key = SCHEMA, to_record, "event_time"
+        elif kind == "labels":
+            self.schema, self._to_record, self._time_key = (
+                LABEL_SCHEMA,
+                to_label_record,
+                "label_available_time",
+            )
+        else:
+            raise ValueError(f"unknown parquet log kind {kind}")
+        self.base_dir = base_dir / kind
         self.flush_s = flush_s
         self.max_rows = max_rows
         self._clock = clock
@@ -82,8 +117,8 @@ class HourlyParquetWriter:
         self._timer: threading.Thread | None = None
 
     def add(self, event: dict[str, Any]) -> list[Path]:
-        rec = to_record(event)
-        t = rec["event_time"]
+        rec = self._to_record(event)
+        t = rec[self._time_key]
         with self._lock:
             self._buffers.setdefault((t.strftime("%Y-%m-%d"), t.strftime("%H")), []).append(rec)
             buffered = sum(len(b) for b in self._buffers.values())
@@ -126,7 +161,7 @@ class HourlyParquetWriter:
                 part = self._part
                 self._part += 1
             path = d / f"part-{part:06d}-{uuid.uuid4().hex[:8]}.parquet"
-            pl.DataFrame(rows, schema=SCHEMA).write_parquet(path, compression="zstd")
+            pl.DataFrame(rows, schema=self.schema).write_parquet(path, compression="zstd")
             with self._lock:
                 self.rows_written += len(rows)
             written.append(path)
@@ -135,19 +170,36 @@ class HourlyParquetWriter:
 
 def run(settings: Settings) -> None:
     st = settings.streaming
-    writer = HourlyParquetWriter(st.parquet_dir, st.parquet_flush_s, st.parquet_max_rows)
+    writers = {
+        st.topic_decisions: HourlyParquetWriter(
+            st.parquet_dir, st.parquet_flush_s, st.parquet_max_rows
+        ),
+        st.topic_labels: HourlyParquetWriter(
+            st.parquet_dir, st.parquet_flush_s, st.parquet_max_rows, kind="labels"
+        ),
+    }
     metrics = WorkerMetrics("parquet_sink")
     metrics.serve(st.metrics_port)
     app = make_app(settings, "fraudshield-parquet-sink")
 
-    def handle(value: dict[str, Any], key: Any, ts: int, headers: Any) -> None:
-        for p in writer.add(value):
-            log.info("wrote %s", p)
-        metrics.observe(st.topic_decisions, ts)
+    for topic, writer in writers.items():
 
-    app.dataframe(json_topic(app, settings, st.topic_decisions)).update(handle, metadata=True)
-    writer.start_timer()
+        def handle(
+            value: dict[str, Any],
+            key: Any,
+            ts: int,
+            headers: Any,
+            w: HourlyParquetWriter = writer,
+            t: str = topic,
+        ) -> None:
+            for p in w.add(value):
+                log.info("wrote %s", p)
+            metrics.observe(t, ts)
+
+        app.dataframe(json_topic(app, settings, topic)).update(handle, metadata=True)
+        writer.start_timer()
     try:
         app.run()
     finally:
-        writer.close()
+        for w in writers.values():
+            w.close()

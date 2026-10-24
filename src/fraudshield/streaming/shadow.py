@@ -11,6 +11,8 @@ import logging
 import time
 from typing import Any
 
+from prometheus_client import Counter, Gauge, Histogram
+
 from fraudshield.config import Settings
 from fraudshield.model_bundle import ModelBundle, Variant
 from fraudshield.serving.models import ModelLoadError, ModelManager, ModelSlot
@@ -71,11 +73,31 @@ def run(settings: Settings, retry_s: float = 60.0) -> None:
     app = make_app(settings, "fraudshield-shadow")
     out = json_topic(app, settings, st.topic_shadow)
 
+    agree = Counter(
+        "shadow_comparisons_total",
+        "Champion vs challenger decisions",
+        ["agree"],
+        registry=metrics.registry,
+    )
+    dp = Histogram("shadow_abs_prob_diff", "|p_challenger - p_champion|", buckets=(0.001, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0),
+                   registry=metrics.registry)  # fmt: skip
+    info = Gauge(
+        "shadow_challenger_info",
+        "Challenger being shadowed (value 1)",
+        ["version"],
+        registry=metrics.registry,
+    )
+    info.labels(version=slot.version).set(1)
+
     def handle(value: dict[str, Any], key: Any, ts: int, headers: Any) -> dict[str, Any] | None:
         metrics.observe(st.topic_decisions, ts)
         if value.get("variant") == "rules_only" or not value.get("features"):
             return None  # no model output to compare against
-        return shadow_score(value, slot.bundle, slot.version, costs)
+        out = shadow_score(value, slot.bundle, slot.version, costs)
+        agree.labels(agree=str(out["agree"]).lower()).inc()
+        if value.get("probability") is not None:
+            dp.observe(abs(out["challenger"]["probability"] - value["probability"]))
+        return out
 
     sdf = app.dataframe(json_topic(app, settings, st.topic_decisions)).apply(handle, metadata=True)
     sdf = sdf.filter(lambda v: v is not None)

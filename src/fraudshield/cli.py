@@ -91,6 +91,8 @@ def _parser() -> argparse.ArgumentParser:
         "--rate", type=float, default=0.0, help="max events per wall second (0 = unlimited)"
     )
     rp.add_argument("--namespace", default=None, help="prefix ids/entities to isolate a run")
+    rp.add_argument("--drift", type=float, default=0.0, metavar="SHARE",
+                    help="inject a fraud ring into this share of events (drift demo)")  # fmt: skip
     return p
 
 
@@ -147,6 +149,7 @@ def _replay(settings: Settings, dataset: DatasetName, args: argparse.Namespace) 
         speed=args.speed,
         rate=args.rate,
         namespace=args.namespace,
+        drift_share=args.drift,
     )
     log.info("replayed %d transactions, %d truth records", stats.raw, stats.truth)
 
