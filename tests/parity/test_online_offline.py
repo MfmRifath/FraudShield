@@ -6,7 +6,6 @@ Spec: replay a 2,000-event fixture through the online path; max |diff| < 1e-6 pe
 from __future__ import annotations
 
 import asyncio
-import math
 from pathlib import Path
 from typing import Any
 
@@ -19,36 +18,16 @@ from fraudshield.config import Settings
 from fraudshield.features.definitions import FeatureSet, build_feature_set
 from fraudshield.features.offline import compute_offline
 from fraudshield.features.online import OnlineSpec
-from fraudshield.features.store import InMemoryFeatureStore, replay
+from fraudshield.features.parity import max_abs_diff, parity_report
+from fraudshield.features.store import replay
 from tests.strategies import EXTRA_NAMES, canonical_frames
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "sparkov_sample.csv"
 TOL = 1e-6
 
 
-def max_abs_diff(
-    online: list[dict[str, Any]], offline: list[dict[str, Any]], names: list[str]
-) -> dict[str, float]:
-    """Per-feature max |online - offline|; inf if null-ness or a categorical value disagrees."""
-    worst = dict.fromkeys(names, 0.0)
-    for a_row, b_row in zip(online, offline, strict=True):
-        for n in names:
-            a, b = a_row[n], b_row[n]
-            if a is None or b is None:
-                d = 0.0 if a is None and b is None else math.inf
-            elif isinstance(a, str) or isinstance(b, str):
-                d = 0.0 if a == b else math.inf
-            else:
-                d = abs(float(a) - float(b))
-            worst[n] = max(worst[n], d)
-    return worst
-
-
 def _parity(df: pl.DataFrame, fs: FeatureSet) -> dict[str, float]:
-    offline = compute_offline(df, fs).select(fs.names).to_dicts()
-    store = InMemoryFeatureStore(OnlineSpec.from_feature_set(fs))
-    online = asyncio.run(replay(store, df.to_dicts(), fs))
-    return max_abs_diff(online, offline, fs.names)
+    return parity_report(df, fs)
 
 
 @pytest.mark.parity
