@@ -1,5 +1,5 @@
 # Analyst UI: static build served by nginx, which also proxies /api/ to the FraudShield API.
-FROM node:24.21.0-alpine AS build
+FROM node:26.11.1-alpine AS build
 WORKDIR /ui
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci --no-audit --no-fund
