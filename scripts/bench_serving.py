@@ -144,6 +144,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "cpu_count": os.cpu_count(),
                 "python": platform.python_version(),
                 "in_container": Path("/.dockerenv").exists(),
+                "model_threads": settings.serving.model_threads,
                 **{p: version(p) for p in ("lightgbm", "fastapi", "polars")},
             },
         }
@@ -173,6 +174,7 @@ A synthetic bundle measures the serving code path at production-like model size;
 - `service_degraded`: feature store down -> request-only model.
 
 Environment: {env["platform"]} ({env["machine"]}, {env["cpu_count"]} CPUs, container={env["in_container"]}), Python {env["python"]}, lightgbm {env["lightgbm"]}, fastapi {env["fastapi"]}.
+Serving: `model_threads={env.get("model_threads", 0)}`. Requests here are sequential, so the thread handoff (LightGBM off the event loop) is pure overhead; under concurrent load it is what keeps feature fetches inside the budget (`reports/loadtest/`).
 DoD threshold: service p95 < {r["threshold_ms"]} ms -> **{"PASS" if r["latency_ms"]["service"]["p95"] < r["threshold_ms"] else "FAIL"}**.
 """
 

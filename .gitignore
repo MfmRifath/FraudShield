@@ -44,6 +44,7 @@ reports/**
 !reports/**/*.md
 !reports/**/*.json
 !reports/**/*.png
+!reports/loadtest/raw/*.csv
 
 # ---- Notebooks
 .ipynb_checkpoints/

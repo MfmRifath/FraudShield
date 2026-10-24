@@ -141,8 +141,9 @@ promote: ## Gate @challenger vs @champion (PR-AUC, savings, latency, parity); mo
 	$(RUN) fraudshield promote $(DS_ARG)
 
 .PHONY: docs
-docs: ## Render docs/model_card.md from reports/<ds>/metrics.json
+docs: ## Render docs/model_card.md from reports/<ds>/metrics.json, then the README metrics
 	$(RUN) fraudshield model-card $(DS_ARG)
+	$(RUN) python -m fraudshield.readme
 
 # ---------------------------------------------------------------- runtime
 COMPOSE ?= docker compose
@@ -189,6 +190,14 @@ ui-test: ## UI typecheck + vitest
 .PHONY: ui-build
 ui-build: ## Production build of the UI -> ui/dist
 	cd ui && npm run build
+
+.PHONY: readme
+readme: ## Refresh the README headline metrics from reports/ (CI checks they are current)
+	$(RUN) python -m fraudshield.readme
+
+.PHONY: quickstart-check
+quickstart-check: ## Follow the README quickstart in a fresh clone (cold build) and time it -> reports/demo/
+	$(RUN) python scripts/quickstart_check.py $(QUICKSTART_ARGS)
 
 .PHONY: dashboards
 dashboards: ## Regenerate infra/grafana/dashboards/*.json from scripts/build_dashboards.py
