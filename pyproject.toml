@@ -20,6 +20,8 @@ dependencies = [
     "pandera==0.34.1",
     "polars==2.0.0",
     "prometheus-client==0.26.0",
+    "psycopg-pool==3.3.3",
+    "psycopg[binary]==3.3.6",
     "pyarrow==25.0.1",
     "pydantic==2.13.5",
     "pydantic-settings==2.15.0",
@@ -150,6 +152,7 @@ markers = [
     "integration: requires docker compose services",
     "mlops: requires the compose mlops profile (postgres, mlflow, prefect)",
     "monitoring: requires the compose monitoring profile (prometheus, grafana)",
+    "ui: requires the compose ui profile (nginx serving the analyst UI)",
     "slow: takes more than a few seconds",
 ]
 filterwarnings = [

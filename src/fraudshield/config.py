@@ -264,6 +264,15 @@ class MonitoringConfig(_Frozen):
     metrics_port: int = Field(default=9100, ge=1, le=65535)
 
 
+class CasesConfig(_Frozen):
+    """Analyst case store (ADR-0013)."""
+
+    store: Literal["memory", "postgres"] = "memory"
+    dsn: SecretStr = SecretStr("postgresql://fraudshield:fraudshield@localhost:5433/fraudshield")
+    pool_max: int = Field(default=4, ge=1)
+    timeline_events: int = Field(default=20, ge=1)
+
+
 class Settings(BaseSettings):
     """Root settings object."""
 
@@ -287,6 +296,7 @@ class Settings(BaseSettings):
     streaming: StreamingConfig = StreamingConfig()
     mlops: MLOpsConfig = MLOpsConfig()
     monitoring: MonitoringConfig = MonitoringConfig()
+    cases: CasesConfig = CasesConfig()
 
     @model_validator(mode="after")
     def _labels_mature_within_gap(self) -> Self:

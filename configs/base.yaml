@@ -121,6 +121,12 @@ monitoring:
   retrain_flow: retrain-and-promote   # mlops-demo in the drift demo (synthetic, no real training)
   metrics_port: 9100
 
+cases:
+  store: memory            # postgres in docker compose (FS_CASE_STORE=postgres)
+  # dsn: set FRAUDSHIELD_CASES__DSN (contains the password)
+  pool_max: 4
+  timeline_events: 20
+
 datasets:
   ieee_cis:
     kaggle_handle: ieee-fraud-detection

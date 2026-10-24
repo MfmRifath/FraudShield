@@ -31,7 +31,11 @@ def _dataset(settings: Settings, dataset: str | None) -> DatasetName:
 
 
 def load_analyst_labels(settings: Settings) -> pl.DataFrame:
-    """Labelled review cases exported to Parquet (the Postgres case store replaces this in Phase 7)."""
+    """Analyst labels: the Postgres case store (``labels`` table) or a Parquet export."""
+    if settings.cases.store == "postgres":
+        from fraudshield.cases.postgres import fetch_analyst_labels
+
+        return fetch_analyst_labels(settings.cases.dsn.get_secret_value())
     path = settings.paths.analyst_labels
     return pl.read_parquet(path) if path.is_file() else pl.DataFrame(schema=ANALYST_SCHEMA)
 

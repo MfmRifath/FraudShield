@@ -1,7 +1,7 @@
 """Analyst review cases.
 
 ``InMemoryCaseStore`` backs tests and the demo container; the Postgres store (tables ``cases``,
-``labels``, ``audit_log``) implements the same protocol in Phase 7.
+``labels``, ``audit_log``; ``cases/postgres.py``) implements the same protocol.
 """
 
 from __future__ import annotations
@@ -59,6 +59,10 @@ class CaseStore(Protocol):
 
     async def open_count(self) -> int: ...
 
+    async def analyst_labels(self) -> list[dict[str, Any]]: ...
+
+    async def audit_trail(self, case_id: str) -> list[AuditEntry]: ...
+
 
 class InMemoryCaseStore:
     def __init__(self) -> None:
@@ -100,10 +104,29 @@ class InMemoryCaseStore:
         self._cases[case_id] = updated
         self.audit.append(
             AuditEntry(
-                at=at, case_id=case_id, action="label", actor=analyst_id, detail={"label": label}
+                at=at,
+                case_id=case_id,
+                action="label",
+                actor=analyst_id,
+                detail={"label": label, "notes": notes},
             )
         )
         return updated
 
     async def open_count(self) -> int:
         return sum(c.status == "open" for c in self._cases.values())
+
+    async def analyst_labels(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "txn_id": c.case_id,
+                "label": 1 if c.label == "fraud" else 0,
+                "label_time": c.labeled_at,
+                "analyst_id": c.analyst_id,
+            }
+            for c in self._cases.values()
+            if c.status == "labeled" and c.label_source == "analyst"
+        ]
+
+    async def audit_trail(self, case_id: str) -> list[AuditEntry]:
+        return [a for a in self.audit if a.case_id == case_id]
