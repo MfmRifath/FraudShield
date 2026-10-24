@@ -6,6 +6,7 @@ import argparse
 import logging
 import sys
 from collections.abc import Sequence
+from datetime import datetime
 from typing import get_args
 
 from fraudshield.config import DatasetName, Settings, get_settings
@@ -45,6 +46,26 @@ def _parser() -> argparse.ArgumentParser:
     tune = with_dataset(sub.add_parser("tune", help="Optuna tuning -> configs/tuned/<ds>.json"))
     tune.add_argument("--trials", type=int, default=None, help="override training.tune.n_trials")
     with_dataset(sub.add_parser("model-card", help="render docs/model_card.md from the last run"))
+
+    rp = with_dataset(
+        sub.add_parser("replay", help="replay transactions into Kafka (transactions.raw/.truth)")
+    )
+    rp.add_argument("--source", choices=("fixture", "canonical"), default="fixture",
+                    help="fixture = committed CC0 Sparkov sample; canonical = data/interim/<ds>")  # fmt: skip
+    rp.add_argument(
+        "--start", type=datetime.fromisoformat, default=None, help="UTC ISO time (inclusive)"
+    )
+    rp.add_argument(
+        "--end", type=datetime.fromisoformat, default=None, help="UTC ISO time (exclusive)"
+    )
+    rp.add_argument("--max-events", type=int, default=None)
+    rp.add_argument(
+        "--speed", type=float, default=0.0, help="event-time seconds per wall second (0 = off)"
+    )
+    rp.add_argument(
+        "--rate", type=float, default=0.0, help="max events per wall second (0 = unlimited)"
+    )
+    rp.add_argument("--namespace", default=None, help="prefix ids/entities to isolate a run")
     return p
 
 
@@ -85,6 +106,26 @@ def _model_card(settings: Settings, dataset: DatasetName) -> None:
     log.info("wrote %s", write_model_card(report, settings.paths.model_card))
 
 
+def _replay(settings: Settings, dataset: DatasetName, args: argparse.Namespace) -> None:
+    from confluent_kafka import Producer
+
+    from fraudshield.streaming.replayer import load_source, replay, select_window
+
+    df = select_window(
+        load_source(settings, args.source, dataset), args.start, args.end, args.max_events
+    )
+    producer = Producer({"bootstrap.servers": settings.streaming.bootstrap_servers, "linger.ms": 5})
+    stats = replay(
+        df.to_dicts(),
+        producer,
+        settings,
+        speed=args.speed,
+        rate=args.rate,
+        namespace=args.namespace,
+    )
+    log.info("replayed %d transactions, %d truth records", stats.raw, stats.truth)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     settings = get_settings()
@@ -106,6 +147,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             _tune(settings, dataset, args.trials)
         elif args.group == "model-card":
             _model_card(settings, dataset)
+        elif args.group == "replay":
+            _replay(settings, dataset, args)
     except (DownloadError, ReproducibilityError, FileNotFoundError) as e:
         log.error("%s", e)
         return 1
