@@ -65,9 +65,12 @@ class CaseStore(Protocol):
 
 
 class InMemoryCaseStore:
-    def __init__(self) -> None:
+    """Dict-backed store; at most ``max_cases`` cases (the oldest go first, with their audit)."""
+
+    def __init__(self, max_cases: int | None = None) -> None:
         self._cases: dict[str, Case] = {}
         self.audit: list[AuditEntry] = []
+        self.max_cases = max_cases
 
     async def open_case(self, case: Case) -> None:
         if case.case_id in self._cases:
@@ -76,6 +79,13 @@ class InMemoryCaseStore:
         self.audit.append(
             AuditEntry(at=case.created_at, case_id=case.case_id, action="open", actor="system")
         )
+        if self.max_cases is not None and len(self._cases) > self.max_cases:
+            # oldest first (insertion order), in batches of 10 % so eviction stays amortised O(1)
+            excess = len(self._cases) - self.max_cases + max(1, self.max_cases // 10) - 1
+            evicted = set(list(self._cases)[:excess])
+            for cid in evicted:
+                del self._cases[cid]
+            self.audit = [a for a in self.audit if a.case_id not in evicted]
 
     async def list_cases(self, status: str | None, limit: int) -> list[Case]:
         cases = [c for c in self._cases.values() if status is None or c.status == status]

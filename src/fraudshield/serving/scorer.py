@@ -14,6 +14,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
+from concurrent.futures import Executor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -79,11 +80,13 @@ class ScoringService:
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
     activity: ActivityLog | None = None
     write_activity: bool = False  # in-process mode; with the stream processor it writes instead
+    model_executor: Executor | None = None  # None: run the model on the event loop
 
-    async def score(self, req: ScoreRequest) -> ScoreResponse:
+    async def score(self, req: ScoreRequest, explain: bool = True) -> ScoreResponse:
+        """``explain=False`` skips model reason codes (no ``pred_contrib`` pass)."""
         t0 = time.perf_counter()
         try:
-            return await self._score(req, t0)
+            return await self._score(req, t0, explain)
         except Exception:  # last line of defence: never a 5xx for internal faults
             log.exception("unexpected error scoring %s", req.txn_id)
             self.metrics.fallbacks.labels(reason="internal_error").inc()
@@ -108,6 +111,9 @@ class ScoringService:
             self.breaker.failure()
             log.debug("feature fetch failed: %s", e)  # counted in fallback_total; avoid log floods
             return None, "feature_store_error"
+        except BaseException:  # cancelled (client gone, shutdown): no verdict on the store
+            self.breaker.abandon()
+            raise
         finally:
             self.metrics.feature_fetch.observe(time.perf_counter() - t)
         self.breaker.success()
@@ -121,7 +127,7 @@ class ScoringService:
         feats.update({f.name: f.scalar(row) for f in fs.request_features})
         return feats
 
-    async def _score(self, req: ScoreRequest, t0: float) -> ScoreResponse:
+    async def _score(self, req: ScoreRequest, t0: float, explain: bool) -> ScoreResponse:
         now = self.clock()
         row = req.to_row(now)
         slot = self.models.route(req.uid)
@@ -139,8 +145,15 @@ class ScoringService:
         else:
             try:
                 which: BundleVariant = "full" if state is not None else "degraded"
-                probability, reasons = slot.bundle.score_one(feats, which)
-                policy = decide_one(probability, req.amount, self.costs)
+                n_reasons = 3 if explain else 0
+                if self.model_executor is None:
+                    p, reasons = slot.bundle.score_one(feats, which, n_reasons)
+                else:  # LightGBM releases the GIL: the loop keeps serving other requests
+                    p, reasons = await asyncio.get_running_loop().run_in_executor(
+                        self.model_executor, slot.bundle.score_one, feats, which, n_reasons
+                    )
+                probability = p
+                policy = decide_one(p, req.amount, self.costs)
                 variant = "champion" if slot.alias == "champion" else "challenger"
                 model_version = slot.version
             except Exception:

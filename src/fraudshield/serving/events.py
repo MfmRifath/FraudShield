@@ -42,6 +42,16 @@ class MemorySink:
         return [orjson.loads(v) for t, _, v in self.messages if t == topic]
 
 
+class NullSink:
+    """Drops every message (the demo container has no broker and must not grow in memory)."""
+
+    async def send(self, topic: str, key: str, value: bytes) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+
 class Publisher:
     """Bounded queue + background drain task."""
 

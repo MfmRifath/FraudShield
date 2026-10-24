@@ -73,6 +73,22 @@ def test_score_contract(client: TestClient, rows: list[dict[str, Any]]) -> None:
 
 
 @pytest.mark.unit
+def test_score_without_explanations(
+    bundle_dir: Path, tmp_path: Path, rows: list[dict[str, Any]]
+) -> None:
+    """``explain=false`` (load-test scenario): same probability, only rule reason codes."""
+    s = serving_settings(tmp_path, bundle_dir=bundle_dir)
+    with TestClient(create_app(s)) as full_c, TestClient(create_app(s)) as lean_c:
+        for row in rows[:30]:  # same sequence into two fresh apps -> same feature history
+            full = full_c.post("/score", json=payload(row)).json()
+            lean = lean_c.post("/score", params={"explain": "false"}, json=payload(row)).json()
+            assert lean["probability"] == pytest.approx(full["probability"], abs=1e-12)
+            assert lean["decision"] == full["decision"]
+            assert all(c["code"].startswith("RULE:") for c in lean["reason_codes"])
+            assert any(not c["code"].startswith("RULE:") for c in full["reason_codes"])
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "mutate",
     [
@@ -246,3 +262,32 @@ def test_sse_stream_opens(client: TestClient) -> None:
         assert r.headers["content-type"].startswith("text/event-stream")
         first = next(r.iter_lines())
         assert first == ": fraudshield decisions"
+
+
+@pytest.mark.unit
+def test_model_threads_match_inline_scoring(
+    bundle_dir: Path, tmp_path: Path, rows: list[dict[str, Any]]
+) -> None:
+    """The executor path (default) returns exactly what inline scoring returns, also concurrently."""
+    import asyncio
+
+    from fraudshield.serving.schemas import ScoreRequest
+
+    base = serving_settings(tmp_path, bundle_dir=bundle_dir, update_store_inline=False)
+    inline = base.model_copy(
+        update={"serving": base.serving.model_copy(update={"model_threads": 0})}
+    )
+    reqs = [ScoreRequest.model_validate(payload(r)) for r in rows[:60]]
+    with TestClient(create_app(base)) as c, TestClient(create_app(inline)) as ci:
+        svc, svc_inline = c.app.state.fs.service, ci.app.state.fs.service  # type: ignore[attr-defined]
+        assert svc.model_executor is not None
+        assert svc_inline.model_executor is None
+
+        async def concurrent() -> list[Any]:
+            return list(await asyncio.gather(*(svc.score(r) for r in reqs)))
+
+        threaded = c.portal.call(concurrent)  # type: ignore[union-attr]
+        sequential = [ci.portal.call(svc_inline.score, r) for r in reqs]  # type: ignore[union-attr]
+    for a, b in zip(threaded, sequential, strict=True):
+        assert (a.probability, a.decision) == (b.probability, b.decision)
+        assert [x.code for x in a.reason_codes] == [x.code for x in b.reason_codes]

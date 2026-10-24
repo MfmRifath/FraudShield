@@ -11,6 +11,7 @@ import json
 import logging
 import secrets
 from collections.abc import AsyncIterable, AsyncIterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -31,14 +32,14 @@ from fraudshield.cases.store import (
     InMemoryCaseStore,
 )
 from fraudshield.config import Settings, get_settings
-from fraudshield.features.online import OnlineSpec
+from fraudshield.features.online import OnlineSpec, epoch_us
 from fraudshield.features.redis_store import RedisFeatureStore
 from fraudshield.features.store import FeatureStore, InMemoryFeatureStore
 from fraudshield.monitoring.summary import counter_by, histogram_quantiles, latest_drift
 from fraudshield.rules import RuleSet
 from fraudshield.serving.activity import ActivityLog, InMemoryActivityLog, RedisActivityLog
 from fraudshield.serving.breaker import CircuitBreaker
-from fraudshield.serving.events import Broadcaster, MemorySink, Publisher, Sink
+from fraudshield.serving.events import Broadcaster, MemorySink, NullSink, Publisher, Sink
 from fraudshield.serving.kafka_sink import KafkaSink
 from fraudshield.serving.metrics import ServingMetrics
 from fraudshield.serving.models import ModelLoadError, ModelManager
@@ -56,6 +57,8 @@ from fraudshield.streaming.common import decode_row
 from fraudshield.training.costs import COST_FIELDS, CostConfig, policy_outcome
 
 log = logging.getLogger(__name__)
+LINKED_WINDOW_US = 7 * 86_400 * 1_000_000  # cards sharing a device / email in the last 7 days
+LINKED_MAX = 50
 
 
 @dataclass
@@ -120,6 +123,8 @@ def create_app(
             out_sink: Sink = sink
         elif srv.publisher == "kafka":
             out_sink = KafkaSink(settings.streaming.bootstrap_servers)
+        elif srv.publisher == "none":
+            out_sink = NullSink()
         else:
             out_sink = MemorySink()
         publisher = Publisher(out_sink, srv.publish_queue_size,
@@ -135,20 +140,28 @@ def create_app(
             )
             case_store = pg_store
         else:
-            case_store = InMemoryCaseStore()
+            case_store = InMemoryCaseStore(max_cases=settings.cases.memory_max_cases)
         activity: ActivityLog = (
             RedisActivityLog(fstore.client)
             if isinstance(fstore, RedisFeatureStore)
             else InMemoryActivityLog()
         )
         costs = CostConfig.load(settings.paths.costs)
+        model_executor = (
+            ThreadPoolExecutor(srv.model_threads, thread_name_prefix="model")
+            if srv.model_threads > 0
+            else None
+        )
         service = ScoringService(
             models=mm, store=fstore, rules=RuleSet.load(settings.paths.rules), costs=costs,
             publisher=publisher, broadcaster=Broadcaster(srv.sse_queue_size), cases=case_store,
-            metrics=metrics, breaker=CircuitBreaker(srv.breaker_failure_threshold, srv.breaker_reset_s),
+            metrics=metrics, breaker=CircuitBreaker(
+                failure_ratio=srv.breaker_failure_ratio, min_calls=srv.breaker_min_calls,
+                window_s=srv.breaker_window_s, reset_s=srv.breaker_reset_s,
+            ),
             feature_timeout_s=srv.feature_timeout_ms / 1e3, update_store_inline=srv.update_store_inline,
             capacity=ReviewCapacity(costs.review_capacity_per_day), activity=activity,
-            write_activity=srv.update_store_inline,
+            write_activity=srv.update_store_inline, model_executor=model_executor,
         )  # fmt: skip
         app.state.fs = AppState(settings, service, mm, case_store, metrics, load_error, activity)
         try:
@@ -159,6 +172,8 @@ def create_app(
                 await fstore.close()
             if pg_store is not None:
                 await pg_store.close()
+            if model_executor is not None:
+                model_executor.shutdown(wait=False, cancel_futures=True)
 
     app = FastAPI(title="FraudShield", version="0.1.0", lifespan=lifespan)
 
@@ -177,8 +192,12 @@ def create_app(
         return Response(generate_latest(st.metrics.registry), media_type=CONTENT_TYPE_LATEST)
 
     @app.post("/score")
-    async def score(req: ScoreRequest, st: StateDep) -> ScoreResponse:
-        return await st.service.score(req)
+    async def score(
+        req: ScoreRequest,
+        st: StateDep,
+        explain: Annotated[bool, Query(description="false: skip model reason codes")] = True,
+    ) -> ScoreResponse:
+        return await st.service.score(req, explain)
 
     @app.get("/model")
     async def model_info(st: StateDep) -> ModelInfo:
@@ -274,19 +293,17 @@ def create_app(
         )
         linked: dict[str, list[str]] = {}
         available = True
+        store = st.service.store
+        since = epoch_us(row["event_time"]) - LINKED_WINDOW_US
         try:
-            state = await asyncio.wait_for(st.service.store.fetch(row), timeout=1.0)
             for col in ("device_info", "p_email_domain"):
-                hist = state.history.get(col, [])
-                uids = sorted(
-                    {
-                        str(e.values.get("uid"))
-                        for e in hist
-                        if e.values.get("uid") not in (None, uid)
-                    }
+                if row.get(col) is None or (col, "uid") not in store.spec.distinct:
+                    continue
+                members = await asyncio.wait_for(
+                    store.distinct_members((col, "uid"), row[col], since, LINKED_MAX + 1),
+                    timeout=1.0,
                 )
-                if row.get(col) is not None:
-                    linked[col] = uids
+                linked[col] = sorted(m for m in members if m != uid)[:LINKED_MAX]
         except Exception as e:  # the context is best-effort; the case itself is in the case store
             log.warning("case context: feature store unavailable: %s", e)
             available = False

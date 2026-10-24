@@ -63,7 +63,7 @@ def _app(tmp: Path, bundle: Path, **kw: Any) -> tuple[Any, FlakyStore]:
 
 @pytest.fixture
 def flaky(bundle_dir: Path, tmp_path: Path) -> Iterator[tuple[TestClient, FlakyStore]]:
-    app, store = _app(tmp_path, bundle_dir, breaker_failure_threshold=3)
+    app, store = _app(tmp_path, bundle_dir, breaker_min_calls=3)
     with TestClient(app) as c:
         yield c, store
 
@@ -115,6 +115,35 @@ def test_timeout_and_circuit_breaker(
     assert {"feature_timeout", "circuit_open"} <= set(_fallbacks(c))
 
 
+@pytest.mark.unit
+def test_cancelled_trial_does_not_wedge_the_breaker(
+    flaky: tuple[TestClient, FlakyStore], rows: list[dict[str, Any]]
+) -> None:
+    """Regression: a half-open trial cancelled mid-fetch used to keep the breaker open forever."""
+    from datetime import UTC, datetime
+
+    from fraudshield.serving.schemas import ScoreRequest
+
+    c, store = flaky
+    now = [0.0]
+    svc = c.app.state.fs.service  # type: ignore[attr-defined]
+    svc.breaker = CircuitBreaker(min_calls=1, reset_s=10, clock=lambda: now[0])
+    svc.breaker.failure()  # open
+    now[0] = 10.0  # half-open: the next fetch is the trial
+    store.mode = "hang"
+    row = ScoreRequest.model_validate(payload(rows[0])).to_row(datetime.now(UTC))
+
+    async def cancel_trial() -> None:
+        task = asyncio.create_task(svc._fetch(row))
+        await asyncio.sleep(0.002)  # inside the fetch, before the 10 ms timeout
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    c.portal.call(cancel_trial)  # type: ignore[union-attr]
+    assert svc.breaker.allow()  # a new trial is allowed
+
+
 def _state(b: CircuitBreaker) -> str:
     return b.state  # fresh read each time (mypy would otherwise keep a narrowed literal)
 
@@ -122,25 +151,61 @@ def _state(b: CircuitBreaker) -> str:
 @pytest.mark.unit
 def test_breaker_state_machine() -> None:
     now = [0.0]
-    b = CircuitBreaker(failure_threshold=2, reset_s=10, clock=lambda: now[0])
+    b = CircuitBreaker(failure_ratio=0.5, min_calls=4, window_s=10, reset_s=5, clock=lambda: now[0])
     assert b.allow()
     assert _state(b) == "closed"
-    b.failure()
-    assert _state(b) == "closed"
+    for _ in range(3):
+        b.failure()
+    assert _state(b) == "closed"  # below min_calls: no verdict yet
     b.failure()
     assert _state(b) == "open"
     assert not b.allow()
-    now[0] = 10.0
+    now[0] = 5.0
     assert _state(b) == "half_open"
     assert b.allow()  # one trial
     assert not b.allow()  # only one trial at a time
     b.failure()
     assert _state(b) == "open"  # failed trial re-opens for another period
-    now[0] = 20.0
+    now[0] = 10.0
     assert b.allow()
     b.success()
     assert _state(b) == "closed"
     assert b.allow()
+
+
+@pytest.mark.unit
+def test_breaker_tolerates_bursts_of_isolated_timeouts() -> None:
+    """A stall times out every in-flight fetch at once; that alone must not open the breaker."""
+    now = [0.0]
+    b = CircuitBreaker(failure_ratio=0.5, min_calls=10, window_s=2, reset_s=5, clock=lambda: now[0])
+    for i in range(1000):  # 100 req/s for 10 s, with a burst of 6 timeouts every 2 s
+        now[0] = i * 0.01
+        if i % 200 < 6:
+            b.failure()
+        else:
+            b.success()
+        assert _state(b) == "closed"
+    start = now[0]
+    while _state(b) == "closed":  # the store really goes down: every call fails
+        now[0] += 0.01
+        b.failure()
+    assert now[0] - start <= 1.05  # opens within about half the window at 100 req/s
+
+
+@pytest.mark.unit
+def test_breaker_window_forgets_old_failures() -> None:
+    now = [0.0]
+    b = CircuitBreaker(failure_ratio=0.5, min_calls=4, window_s=10, reset_s=5, clock=lambda: now[0])
+    for _ in range(3):
+        b.failure()
+    now[0] = 11.0  # those failures left the window
+    b.failure()
+    b.success()
+    b.success()
+    b.success()
+    assert _state(b) == "closed"  # 1 failure in 4 calls
+    with pytest.raises(ValueError, match="failure_ratio"):
+        CircuitBreaker(failure_ratio=0.0)
 
 
 @pytest.mark.unit

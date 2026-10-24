@@ -200,14 +200,20 @@ class ServingConfig(_Frozen):
     load_challenger: bool = True
     canary_pct: int = Field(default=0, ge=0, le=100)
     feature_timeout_ms: float = Field(default=10.0, gt=0)
-    breaker_failure_threshold: int = Field(default=5, ge=1)
-    breaker_reset_s: float = Field(default=30.0, gt=0)
+    # failure-rate breaker (ADR-0014): open on >= ratio failures over >= min_calls in window_s
+    breaker_failure_ratio: float = Field(default=0.5, gt=0, le=1)
+    breaker_min_calls: int = Field(default=10, ge=1)
+    breaker_window_s: float = Field(default=2.0, gt=0)
+    breaker_reset_s: float = Field(default=5.0, gt=0)
     update_store_inline: bool = Field(
         default=True, description="API updates the store after scoring (no stream processor)"
     )
     feature_store: Literal["memory", "redis"] = "memory"
-    publisher: Literal["memory", "kafka"] = "memory"
+    publisher: Literal["memory", "kafka", "none"] = "memory"  # none: drop (demo container)
     publish_queue_size: int = Field(default=10_000, ge=1)
+    # LightGBM runs in this many threads, off the event loop (ctypes releases the GIL), so CPU-heavy
+    # reason codes do not delay Redis replies past the feature budget (ADR-0014). 0 = inline.
+    model_threads: int = Field(default=2, ge=0)
     sse_queue_size: int = Field(default=1_000, ge=1)
     admin_token: SecretStr | None = None
 
@@ -264,6 +270,15 @@ class MonitoringConfig(_Frozen):
     metrics_port: int = Field(default=9100, ge=1, le=65535)
 
 
+class DemoConfig(_Frozen):
+    """Single-container demo (``fraudshield.demo``): in-process replay + API + static UI."""
+
+    rate: float = Field(default=5.0, gt=0, description="replayed transactions per second")
+    window: Path | None = Field(default=None, description="canonical parquet; None = CC0 fixture")
+    loop: bool = True  # replay again (times shifted past the window) when the window ends
+    ui_dir: Path = Path("ui/dist")
+
+
 class CasesConfig(_Frozen):
     """Analyst case store (ADR-0013)."""
 
@@ -271,6 +286,9 @@ class CasesConfig(_Frozen):
     dsn: SecretStr = SecretStr("postgresql://fraudshield:fraudshield@localhost:5433/fraudshield")
     pool_max: int = Field(default=4, ge=1)
     timeline_events: int = Field(default=20, ge=1)
+    memory_max_cases: int = Field(
+        default=10_000, ge=1, description="in-memory store cap (oldest out)"
+    )
 
 
 class Settings(BaseSettings):
@@ -297,6 +315,7 @@ class Settings(BaseSettings):
     mlops: MLOpsConfig = MLOpsConfig()
     monitoring: MonitoringConfig = MonitoringConfig()
     cases: CasesConfig = CasesConfig()
+    demo: DemoConfig = DemoConfig()
 
     @model_validator(mode="after")
     def _labels_mature_within_gap(self) -> Self:

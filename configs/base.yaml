@@ -67,8 +67,11 @@ serving:
   load_challenger: true
   canary_pct: 0            # % of uids (stable hash) routed to @challenger
   feature_timeout_ms: 10
-  breaker_failure_threshold: 5
-  breaker_reset_s: 30
+  # failure-rate circuit breaker (ADR-0014)
+  breaker_failure_ratio: 0.5
+  breaker_min_calls: 10
+  breaker_window_s: 2
+  breaker_reset_s: 5
   update_store_inline: true   # false when the stream processor updates the store (Phase 4)
   feature_store: memory      # redis in docker compose
   publisher: memory          # kafka in docker compose
