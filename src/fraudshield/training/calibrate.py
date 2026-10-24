@@ -14,8 +14,6 @@ from typing import Final, Literal
 import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict
-from sklearn.isotonic import IsotonicRegression
-from sklearn.linear_model import LogisticRegression
 
 log = logging.getLogger(__name__)
 FloatArray = npt.NDArray[np.float64]
@@ -52,6 +50,10 @@ class Calibrator(BaseModel):
 def fit_calibrator(
     scores: npt.ArrayLike, y: npt.ArrayLike, platt_below_positives: int = 1000
 ) -> Calibrator:
+    # scikit-learn is a training-only dependency; applying a calibrator needs numpy only
+    from sklearn.isotonic import IsotonicRegression
+    from sklearn.linear_model import LogisticRegression
+
     s = np.asarray(scores, dtype=np.float64)
     t = np.asarray(y, dtype=np.int64)
     n_pos = int(t.sum())
