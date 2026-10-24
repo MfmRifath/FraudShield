@@ -1,0 +1,37 @@
+{
+ "config": {
+  "users": 50,
+  "rps_per_user": 2.0,
+  "duration_s": 60,
+  "warmup_s": 30,
+  "known_share": 0.7,
+  "run_id": "lt1792852451",
+  "payloads": "artifacts/loadtest/payloads.jsonl",
+  "bundle_dir": "artifacts/loadtest/bundle",
+  "out_dir": "reports/loadtest",
+  "metrics_url": "http://localhost:8000/metrics",
+  "target_host": "http://api:8000",
+  "network": "fraudshield_default",
+  "image": "fraudshield-test:dev",
+  "compose": [
+   "docker",
+   "compose",
+   "--profile",
+   "core"
+  ],
+  "api_container": "fraudshield-api-1"
+ },
+ "environment": {
+  "host_machine": "arm64",
+  "host_system": "Darwin",
+  "docker_cpus": 12,
+  "docker_mem_gib": 7.7,
+  "docker_arch": "aarch64",
+  "docker_os": "Docker Desktop"
+ },
+ "scenarios": [
+  "normal",
+  "no_reason_codes",
+  "redis_killed"
+ ]
+}

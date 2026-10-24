@@ -1,0 +1,1908 @@
+{
+ "scenario": {
+  "name": "normal",
+  "title": "Normal: full scoring with 3 reason codes",
+  "explain": true,
+  "redis_outage": null
+ },
+ "started_at": 1792852546.8848362,
+ "load_start": 3.011162292001245,
+ "outage": null,
+ "container_stats": {
+  "MemUsage": "167.7MiB / 768MiB",
+  "CPUPerc": "53.86%",
+  "MemPerc": "21.83%"
+ },
+ "samples": [
+  {
+   "t": 0.0001479580023442395,
+   "decisions": {
+    "approve": 1157.0,
+    "review": 200.0,
+    "block": 1395.0
+   },
+   "fallbacks": {
+    "feature_timeout": 32.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 478.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 769.0,
+    "0.01": 2619.0,
+    "0.02": 2692.0,
+    "0.05": 2733.0,
+    "0.1": 2752.0,
+    "0.25": 2752.0,
+    "0.5": 2752.0,
+    "1.0": 2752.0,
+    "inf": 2752.0
+   }
+  },
+  {
+   "t": 1.003284958002041,
+   "decisions": {
+    "approve": 1157.0,
+    "review": 200.0,
+    "block": 1395.0
+   },
+   "fallbacks": {
+    "feature_timeout": 32.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 478.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 769.0,
+    "0.01": 2619.0,
+    "0.02": 2692.0,
+    "0.05": 2733.0,
+    "0.1": 2752.0,
+    "0.25": 2752.0,
+    "0.5": 2752.0,
+    "1.0": 2752.0,
+    "inf": 2752.0
+   }
+  },
+  {
+   "t": 2.008329083000717,
+   "decisions": {
+    "approve": 1157.0,
+    "review": 200.0,
+    "block": 1395.0
+   },
+   "fallbacks": {
+    "feature_timeout": 32.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 478.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 769.0,
+    "0.01": 2619.0,
+    "0.02": 2692.0,
+    "0.05": 2733.0,
+    "0.1": 2752.0,
+    "0.25": 2752.0,
+    "0.5": 2752.0,
+    "1.0": 2752.0,
+    "inf": 2752.0
+   }
+  },
+  {
+   "t": 3.011162292001245,
+   "decisions": {
+    "approve": 1189.0,
+    "review": 200.0,
+    "block": 1473.0
+   },
+   "fallbacks": {
+    "feature_timeout": 32.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 498.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 780.0,
+    "0.01": 2668.0,
+    "0.02": 2749.0,
+    "0.05": 2803.0,
+    "0.1": 2862.0,
+    "0.25": 2862.0,
+    "0.5": 2862.0,
+    "1.0": 2862.0,
+    "inf": 2862.0
+   }
+  },
+  {
+   "t": 4.014226207997126,
+   "decisions": {
+    "approve": 1222.0,
+    "review": 200.0,
+    "block": 1549.0
+   },
+   "fallbacks": {
+    "feature_timeout": 32.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 520.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 815.0,
+    "0.01": 2776.0,
+    "0.02": 2858.0,
+    "0.05": 2912.0,
+    "0.1": 2971.0,
+    "0.25": 2971.0,
+    "0.5": 2971.0,
+    "1.0": 2971.0,
+    "inf": 2971.0
+   }
+  },
+  {
+   "t": 5.01914950000355,
+   "decisions": {
+    "approve": 1247.0,
+    "review": 200.0,
+    "block": 1617.0
+   },
+   "fallbacks": {
+    "feature_timeout": 32.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 535.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 823.0,
+    "0.01": 2864.0,
+    "0.02": 2951.0,
+    "0.05": 3005.0,
+    "0.1": 3064.0,
+    "0.25": 3064.0,
+    "0.5": 3064.0,
+    "1.0": 3064.0,
+    "inf": 3064.0
+   }
+  },
+  {
+   "t": 6.024213292002969,
+   "decisions": {
+    "approve": 1287.0,
+    "review": 200.0,
+    "block": 1685.0
+   },
+   "fallbacks": {
+    "feature_timeout": 32.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 559.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 847.0,
+    "0.01": 2965.0,
+    "0.02": 3059.0,
+    "0.05": 3113.0,
+    "0.1": 3172.0,
+    "0.25": 3172.0,
+    "0.5": 3172.0,
+    "1.0": 3172.0,
+    "inf": 3172.0
+   }
+  },
+  {
+   "t": 7.027480457996717,
+   "decisions": {
+    "approve": 1319.0,
+    "review": 200.0,
+    "block": 1751.0
+   },
+   "fallbacks": {
+    "feature_timeout": 32.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 582.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 871.0,
+    "0.01": 3060.0,
+    "0.02": 3157.0,
+    "0.05": 3211.0,
+    "0.1": 3270.0,
+    "0.25": 3270.0,
+    "0.5": 3270.0,
+    "1.0": 3270.0,
+    "inf": 3270.0
+   }
+  },
+  {
+   "t": 8.031010625003546,
+   "decisions": {
+    "approve": 1356.0,
+    "review": 200.0,
+    "block": 1826.0
+   },
+   "fallbacks": {
+    "feature_timeout": 32.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 598.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 906.0,
+    "0.01": 3172.0,
+    "0.02": 3269.0,
+    "0.05": 3323.0,
+    "0.1": 3382.0,
+    "0.25": 3382.0,
+    "0.5": 3382.0,
+    "1.0": 3382.0,
+    "inf": 3382.0
+   }
+  },
+  {
+   "t": 9.03619350000372,
+   "decisions": {
+    "approve": 1391.0,
+    "review": 200.0,
+    "block": 1885.0
+   },
+   "fallbacks": {
+    "feature_timeout": 32.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 615.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 931.0,
+    "0.01": 3263.0,
+    "0.02": 3363.0,
+    "0.05": 3417.0,
+    "0.1": 3476.0,
+    "0.25": 3476.0,
+    "0.5": 3476.0,
+    "1.0": 3476.0,
+    "inf": 3476.0
+   }
+  },
+  {
+   "t": 10.036849208001513,
+   "decisions": {
+    "approve": 1425.0,
+    "review": 200.0,
+    "block": 1945.0
+   },
+   "fallbacks": {
+    "feature_timeout": 35.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 644.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 952.0,
+    "0.01": 3341.0,
+    "0.02": 3454.0,
+    "0.05": 3511.0,
+    "0.1": 3570.0,
+    "0.25": 3570.0,
+    "0.5": 3570.0,
+    "1.0": 3570.0,
+    "inf": 3570.0
+   }
+  },
+  {
+   "t": 11.037786417000461,
+   "decisions": {
+    "approve": 1460.0,
+    "review": 200.0,
+    "block": 2008.0
+   },
+   "fallbacks": {
+    "feature_timeout": 35.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 661.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 975.0,
+    "0.01": 3433.0,
+    "0.02": 3552.0,
+    "0.05": 3609.0,
+    "0.1": 3668.0,
+    "0.25": 3668.0,
+    "0.5": 3668.0,
+    "1.0": 3668.0,
+    "inf": 3668.0
+   }
+  },
+  {
+   "t": 12.04101479199744,
+   "decisions": {
+    "approve": 1497.0,
+    "review": 200.0,
+    "block": 2069.0
+   },
+   "fallbacks": {
+    "feature_timeout": 36.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 680.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 986.0,
+    "0.01": 3502.0,
+    "0.02": 3627.0,
+    "0.05": 3703.0,
+    "0.1": 3766.0,
+    "0.25": 3766.0,
+    "0.5": 3766.0,
+    "1.0": 3766.0,
+    "inf": 3766.0
+   }
+  },
+  {
+   "t": 13.045916957998998,
+   "decisions": {
+    "approve": 1539.0,
+    "review": 200.0,
+    "block": 2132.0
+   },
+   "fallbacks": {
+    "feature_timeout": 36.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 703.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1016.0,
+    "0.01": 3602.0,
+    "0.02": 3732.0,
+    "0.05": 3808.0,
+    "0.1": 3871.0,
+    "0.25": 3871.0,
+    "0.5": 3871.0,
+    "1.0": 3871.0,
+    "inf": 3871.0
+   }
+  },
+  {
+   "t": 14.051003874999878,
+   "decisions": {
+    "approve": 1577.0,
+    "review": 200.0,
+    "block": 2200.0
+   },
+   "fallbacks": {
+    "feature_timeout": 36.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 720.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1042.0,
+    "0.01": 3706.0,
+    "0.02": 3838.0,
+    "0.05": 3914.0,
+    "0.1": 3977.0,
+    "0.25": 3977.0,
+    "0.5": 3977.0,
+    "1.0": 3977.0,
+    "inf": 3977.0
+   }
+  },
+  {
+   "t": 15.056075542001054,
+   "decisions": {
+    "approve": 1608.0,
+    "review": 200.0,
+    "block": 2276.0
+   },
+   "fallbacks": {
+    "feature_timeout": 36.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 737.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1078.0,
+    "0.01": 3813.0,
+    "0.02": 3945.0,
+    "0.05": 4021.0,
+    "0.1": 4084.0,
+    "0.25": 4084.0,
+    "0.5": 4084.0,
+    "1.0": 4084.0,
+    "inf": 4084.0
+   }
+  },
+  {
+   "t": 16.06116445799853,
+   "decisions": {
+    "approve": 1639.0,
+    "review": 200.0,
+    "block": 2333.0
+   },
+   "fallbacks": {
+    "feature_timeout": 36.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 751.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1095.0,
+    "0.01": 3899.0,
+    "0.02": 4033.0,
+    "0.05": 4109.0,
+    "0.1": 4172.0,
+    "0.25": 4172.0,
+    "0.5": 4172.0,
+    "1.0": 4172.0,
+    "inf": 4172.0
+   }
+  },
+  {
+   "t": 17.066259999999602,
+   "decisions": {
+    "approve": 1676.0,
+    "review": 200.0,
+    "block": 2385.0
+   },
+   "fallbacks": {
+    "feature_timeout": 36.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 768.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1117.0,
+    "0.01": 3985.0,
+    "0.02": 4122.0,
+    "0.05": 4198.0,
+    "0.1": 4261.0,
+    "0.25": 4261.0,
+    "0.5": 4261.0,
+    "1.0": 4261.0,
+    "inf": 4261.0
+   }
+  },
+  {
+   "t": 18.06869983299839,
+   "decisions": {
+    "approve": 1719.0,
+    "review": 200.0,
+    "block": 2452.0
+   },
+   "fallbacks": {
+    "feature_timeout": 36.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 794.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1161.0,
+    "0.01": 4093.0,
+    "0.02": 4232.0,
+    "0.05": 4308.0,
+    "0.1": 4371.0,
+    "0.25": 4371.0,
+    "0.5": 4371.0,
+    "1.0": 4371.0,
+    "inf": 4371.0
+   }
+  },
+  {
+   "t": 19.072330000002694,
+   "decisions": {
+    "approve": 1761.0,
+    "review": 200.0,
+    "block": 2520.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 817.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1194.0,
+    "0.01": 4189.0,
+    "0.02": 4336.0,
+    "0.05": 4418.0,
+    "0.1": 4481.0,
+    "0.25": 4481.0,
+    "0.5": 4481.0,
+    "1.0": 4481.0,
+    "inf": 4481.0
+   }
+  },
+  {
+   "t": 20.077413625003828,
+   "decisions": {
+    "approve": 1792.0,
+    "review": 200.0,
+    "block": 2593.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 838.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1225.0,
+    "0.01": 4291.0,
+    "0.02": 4440.0,
+    "0.05": 4522.0,
+    "0.1": 4585.0,
+    "0.25": 4585.0,
+    "0.5": 4585.0,
+    "1.0": 4585.0,
+    "inf": 4585.0
+   }
+  },
+  {
+   "t": 21.079965832999733,
+   "decisions": {
+    "approve": 1815.0,
+    "review": 200.0,
+    "block": 2671.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 855.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1245.0,
+    "0.01": 4389.0,
+    "0.02": 4541.0,
+    "0.05": 4623.0,
+    "0.1": 4686.0,
+    "0.25": 4686.0,
+    "0.5": 4686.0,
+    "1.0": 4686.0,
+    "inf": 4686.0
+   }
+  },
+  {
+   "t": 22.083465916999558,
+   "decisions": {
+    "approve": 1848.0,
+    "review": 200.0,
+    "block": 2730.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 871.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1256.0,
+    "0.01": 4471.0,
+    "0.02": 4632.0,
+    "0.05": 4715.0,
+    "0.1": 4778.0,
+    "0.25": 4778.0,
+    "0.5": 4778.0,
+    "1.0": 4778.0,
+    "inf": 4778.0
+   }
+  },
+  {
+   "t": 23.088532000001578,
+   "decisions": {
+    "approve": 1888.0,
+    "review": 200.0,
+    "block": 2801.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 895.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1284.0,
+    "0.01": 4571.0,
+    "0.02": 4743.0,
+    "0.05": 4826.0,
+    "0.1": 4889.0,
+    "0.25": 4889.0,
+    "0.5": 4889.0,
+    "1.0": 4889.0,
+    "inf": 4889.0
+   }
+  },
+  {
+   "t": 24.093609750001633,
+   "decisions": {
+    "approve": 1917.0,
+    "review": 200.0,
+    "block": 2854.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 915.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1298.0,
+    "0.01": 4642.0,
+    "0.02": 4825.0,
+    "0.05": 4908.0,
+    "0.1": 4971.0,
+    "0.25": 4971.0,
+    "0.5": 4971.0,
+    "1.0": 4971.0,
+    "inf": 4971.0
+   }
+  },
+  {
+   "t": 25.095184541998606,
+   "decisions": {
+    "approve": 1944.0,
+    "review": 200.0,
+    "block": 2912.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 929.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1308.0,
+    "0.01": 4718.0,
+    "0.02": 4910.0,
+    "0.05": 4993.0,
+    "0.1": 5056.0,
+    "0.25": 5056.0,
+    "0.5": 5056.0,
+    "1.0": 5056.0,
+    "inf": 5056.0
+   }
+  },
+  {
+   "t": 26.100216166996688,
+   "decisions": {
+    "approve": 1984.0,
+    "review": 200.0,
+    "block": 2973.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 950.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1329.0,
+    "0.01": 4811.0,
+    "0.02": 5011.0,
+    "0.05": 5094.0,
+    "0.1": 5157.0,
+    "0.25": 5157.0,
+    "0.5": 5157.0,
+    "1.0": 5157.0,
+    "inf": 5157.0
+   }
+  },
+  {
+   "t": 27.103884999996808,
+   "decisions": {
+    "approve": 2023.0,
+    "review": 200.0,
+    "block": 3033.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 969.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1349.0,
+    "0.01": 4905.0,
+    "0.02": 5110.0,
+    "0.05": 5193.0,
+    "0.1": 5256.0,
+    "0.25": 5256.0,
+    "0.5": 5256.0,
+    "1.0": 5256.0,
+    "inf": 5256.0
+   }
+  },
+  {
+   "t": 28.107397958003276,
+   "decisions": {
+    "approve": 2065.0,
+    "review": 200.0,
+    "block": 3089.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 999.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1378.0,
+    "0.01": 5002.0,
+    "0.02": 5208.0,
+    "0.05": 5291.0,
+    "0.1": 5354.0,
+    "0.25": 5354.0,
+    "0.5": 5354.0,
+    "1.0": 5354.0,
+    "inf": 5354.0
+   }
+  },
+  {
+   "t": 29.107526500003587,
+   "decisions": {
+    "approve": 2104.0,
+    "review": 200.0,
+    "block": 3142.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1028.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1407.0,
+    "0.01": 5091.0,
+    "0.02": 5300.0,
+    "0.05": 5383.0,
+    "0.1": 5446.0,
+    "0.25": 5446.0,
+    "0.5": 5446.0,
+    "1.0": 5446.0,
+    "inf": 5446.0
+   }
+  },
+  {
+   "t": 30.111734666999837,
+   "decisions": {
+    "approve": 2152.0,
+    "review": 200.0,
+    "block": 3206.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1052.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1455.0,
+    "0.01": 5200.0,
+    "0.02": 5412.0,
+    "0.05": 5495.0,
+    "0.1": 5558.0,
+    "0.25": 5558.0,
+    "0.5": 5558.0,
+    "1.0": 5558.0,
+    "inf": 5558.0
+   }
+  },
+  {
+   "t": 31.112799458001973,
+   "decisions": {
+    "approve": 2180.0,
+    "review": 200.0,
+    "block": 3270.0
+   },
+   "fallbacks": {
+    "feature_timeout": 40.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1075.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1475.0,
+    "0.01": 5289.0,
+    "0.02": 5504.0,
+    "0.05": 5587.0,
+    "0.1": 5650.0,
+    "0.25": 5650.0,
+    "0.5": 5650.0,
+    "1.0": 5650.0,
+    "inf": 5650.0
+   }
+  },
+  {
+   "t": 32.116478999996616,
+   "decisions": {
+    "approve": 2206.0,
+    "review": 200.0,
+    "block": 3338.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1094.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1491.0,
+    "0.01": 5377.0,
+    "0.02": 5596.0,
+    "0.05": 5681.0,
+    "0.1": 5744.0,
+    "0.25": 5744.0,
+    "0.5": 5744.0,
+    "1.0": 5744.0,
+    "inf": 5744.0
+   }
+  },
+  {
+   "t": 33.12142550000135,
+   "decisions": {
+    "approve": 2234.0,
+    "review": 200.0,
+    "block": 3401.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1112.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1497.0,
+    "0.01": 5459.0,
+    "0.02": 5687.0,
+    "0.05": 5772.0,
+    "0.1": 5835.0,
+    "0.25": 5835.0,
+    "0.5": 5835.0,
+    "1.0": 5835.0,
+    "inf": 5835.0
+   }
+  },
+  {
+   "t": 34.12609879200318,
+   "decisions": {
+    "approve": 2266.0,
+    "review": 200.0,
+    "block": 3469.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1129.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1523.0,
+    "0.01": 5548.0,
+    "0.02": 5787.0,
+    "0.05": 5872.0,
+    "0.1": 5935.0,
+    "0.25": 5935.0,
+    "0.5": 5935.0,
+    "1.0": 5935.0,
+    "inf": 5935.0
+   }
+  },
+  {
+   "t": 35.13111087500147,
+   "decisions": {
+    "approve": 2296.0,
+    "review": 200.0,
+    "block": 3532.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1159.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1561.0,
+    "0.01": 5635.0,
+    "0.02": 5880.0,
+    "0.05": 5965.0,
+    "0.1": 6028.0,
+    "0.25": 6028.0,
+    "0.5": 6028.0,
+    "1.0": 6028.0,
+    "inf": 6028.0
+   }
+  },
+  {
+   "t": 36.13617654200061,
+   "decisions": {
+    "approve": 2325.0,
+    "review": 200.0,
+    "block": 3598.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1178.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1581.0,
+    "0.01": 5725.0,
+    "0.02": 5975.0,
+    "0.05": 6060.0,
+    "0.1": 6123.0,
+    "0.25": 6123.0,
+    "0.5": 6123.0,
+    "1.0": 6123.0,
+    "inf": 6123.0
+   }
+  },
+  {
+   "t": 37.13955708299909,
+   "decisions": {
+    "approve": 2355.0,
+    "review": 200.0,
+    "block": 3661.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1198.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1614.0,
+    "0.01": 5812.0,
+    "0.02": 6068.0,
+    "0.05": 6153.0,
+    "0.1": 6216.0,
+    "0.25": 6216.0,
+    "0.5": 6216.0,
+    "1.0": 6216.0,
+    "inf": 6216.0
+   }
+  },
+  {
+   "t": 38.14423983300367,
+   "decisions": {
+    "approve": 2379.0,
+    "review": 200.0,
+    "block": 3754.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1224.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1651.0,
+    "0.01": 5926.0,
+    "0.02": 6185.0,
+    "0.05": 6270.0,
+    "0.1": 6333.0,
+    "0.25": 6333.0,
+    "0.5": 6333.0,
+    "1.0": 6333.0,
+    "inf": 6333.0
+   }
+  },
+  {
+   "t": 39.14931545800209,
+   "decisions": {
+    "approve": 2409.0,
+    "review": 200.0,
+    "block": 3820.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1238.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1673.0,
+    "0.01": 6014.0,
+    "0.02": 6279.0,
+    "0.05": 6366.0,
+    "0.1": 6429.0,
+    "0.25": 6429.0,
+    "0.5": 6429.0,
+    "1.0": 6429.0,
+    "inf": 6429.0
+   }
+  },
+  {
+   "t": 40.153336249997665,
+   "decisions": {
+    "approve": 2438.0,
+    "review": 200.0,
+    "block": 3901.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1255.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1707.0,
+    "0.01": 6121.0,
+    "0.02": 6389.0,
+    "0.05": 6476.0,
+    "0.1": 6539.0,
+    "0.25": 6539.0,
+    "0.5": 6539.0,
+    "1.0": 6539.0,
+    "inf": 6539.0
+   }
+  },
+  {
+   "t": 41.157033875002526,
+   "decisions": {
+    "approve": 2469.0,
+    "review": 200.0,
+    "block": 3973.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1278.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1734.0,
+    "0.01": 6214.0,
+    "0.02": 6492.0,
+    "0.05": 6579.0,
+    "0.1": 6642.0,
+    "0.25": 6642.0,
+    "0.5": 6642.0,
+    "1.0": 6642.0,
+    "inf": 6642.0
+   }
+  },
+  {
+   "t": 42.16038745800324,
+   "decisions": {
+    "approve": 2493.0,
+    "review": 200.0,
+    "block": 4049.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1294.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1761.0,
+    "0.01": 6312.0,
+    "0.02": 6592.0,
+    "0.05": 6679.0,
+    "0.1": 6742.0,
+    "0.25": 6742.0,
+    "0.5": 6742.0,
+    "1.0": 6742.0,
+    "inf": 6742.0
+   }
+  },
+  {
+   "t": 43.16344375000335,
+   "decisions": {
+    "approve": 2522.0,
+    "review": 200.0,
+    "block": 4115.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1311.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1795.0,
+    "0.01": 6400.0,
+    "0.02": 6686.0,
+    "0.05": 6774.0,
+    "0.1": 6837.0,
+    "0.25": 6837.0,
+    "0.5": 6837.0,
+    "1.0": 6837.0,
+    "inf": 6837.0
+   }
+  },
+  {
+   "t": 44.16833495799801,
+   "decisions": {
+    "approve": 2549.0,
+    "review": 200.0,
+    "block": 4185.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1325.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1829.0,
+    "0.01": 6492.0,
+    "0.02": 6783.0,
+    "0.05": 6871.0,
+    "0.1": 6934.0,
+    "0.25": 6934.0,
+    "0.5": 6934.0,
+    "1.0": 6934.0,
+    "inf": 6934.0
+   }
+  },
+  {
+   "t": 45.1714728329971,
+   "decisions": {
+    "approve": 2584.0,
+    "review": 200.0,
+    "block": 4278.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1355.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1877.0,
+    "0.01": 6609.0,
+    "0.02": 6909.0,
+    "0.05": 6999.0,
+    "0.1": 7062.0,
+    "0.25": 7062.0,
+    "0.5": 7062.0,
+    "1.0": 7062.0,
+    "inf": 7062.0
+   }
+  },
+  {
+   "t": 46.17653099999734,
+   "decisions": {
+    "approve": 2618.0,
+    "review": 200.0,
+    "block": 4339.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1379.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1916.0,
+    "0.01": 6700.0,
+    "0.02": 7004.0,
+    "0.05": 7094.0,
+    "0.1": 7157.0,
+    "0.25": 7157.0,
+    "0.5": 7157.0,
+    "1.0": 7157.0,
+    "inf": 7157.0
+   }
+  },
+  {
+   "t": 47.18074237499968,
+   "decisions": {
+    "approve": 2649.0,
+    "review": 200.0,
+    "block": 4415.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1405.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1959.0,
+    "0.01": 6797.0,
+    "0.02": 7111.0,
+    "0.05": 7201.0,
+    "0.1": 7264.0,
+    "0.25": 7264.0,
+    "0.5": 7264.0,
+    "1.0": 7264.0,
+    "inf": 7264.0
+   }
+  },
+  {
+   "t": 48.18505270800233,
+   "decisions": {
+    "approve": 2671.0,
+    "review": 200.0,
+    "block": 4485.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1424.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 1992.0,
+    "0.01": 6881.0,
+    "0.02": 7203.0,
+    "0.05": 7293.0,
+    "0.1": 7356.0,
+    "0.25": 7356.0,
+    "0.5": 7356.0,
+    "1.0": 7356.0,
+    "inf": 7356.0
+   }
+  },
+  {
+   "t": 49.188163625003654,
+   "decisions": {
+    "approve": 2700.0,
+    "review": 200.0,
+    "block": 4569.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1442.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2022.0,
+    "0.01": 6976.0,
+    "0.02": 7315.0,
+    "0.05": 7406.0,
+    "0.1": 7469.0,
+    "0.25": 7469.0,
+    "0.5": 7469.0,
+    "1.0": 7469.0,
+    "inf": 7469.0
+   }
+  },
+  {
+   "t": 50.19258408300084,
+   "decisions": {
+    "approve": 2727.0,
+    "review": 200.0,
+    "block": 4643.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1464.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2051.0,
+    "0.01": 7059.0,
+    "0.02": 7414.0,
+    "0.05": 7507.0,
+    "0.1": 7570.0,
+    "0.25": 7570.0,
+    "0.5": 7570.0,
+    "1.0": 7570.0,
+    "inf": 7570.0
+   }
+  },
+  {
+   "t": 51.19337204199837,
+   "decisions": {
+    "approve": 2762.0,
+    "review": 200.0,
+    "block": 4715.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1487.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2083.0,
+    "0.01": 7154.0,
+    "0.02": 7521.0,
+    "0.05": 7614.0,
+    "0.1": 7677.0,
+    "0.25": 7677.0,
+    "0.5": 7677.0,
+    "1.0": 7677.0,
+    "inf": 7677.0
+   }
+  },
+  {
+   "t": 52.19750295799895,
+   "decisions": {
+    "approve": 2794.0,
+    "review": 200.0,
+    "block": 4791.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1503.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2115.0,
+    "0.01": 7256.0,
+    "0.02": 7629.0,
+    "0.05": 7722.0,
+    "0.1": 7785.0,
+    "0.25": 7785.0,
+    "0.5": 7785.0,
+    "1.0": 7785.0,
+    "inf": 7785.0
+   }
+  },
+  {
+   "t": 53.20258120800281,
+   "decisions": {
+    "approve": 2823.0,
+    "review": 200.0,
+    "block": 4861.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1521.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2135.0,
+    "0.01": 7347.0,
+    "0.02": 7728.0,
+    "0.05": 7821.0,
+    "0.1": 7884.0,
+    "0.25": 7884.0,
+    "0.5": 7884.0,
+    "1.0": 7884.0,
+    "inf": 7884.0
+   }
+  },
+  {
+   "t": 54.206589583001914,
+   "decisions": {
+    "approve": 2849.0,
+    "review": 200.0,
+    "block": 4922.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1537.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2153.0,
+    "0.01": 7418.0,
+    "0.02": 7813.0,
+    "0.05": 7908.0,
+    "0.1": 7971.0,
+    "0.25": 7971.0,
+    "0.5": 7971.0,
+    "1.0": 7971.0,
+    "inf": 7971.0
+   }
+  },
+  {
+   "t": 55.21165304200258,
+   "decisions": {
+    "approve": 2878.0,
+    "review": 200.0,
+    "block": 4995.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1556.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2191.0,
+    "0.01": 7518.0,
+    "0.02": 7915.0,
+    "0.05": 8010.0,
+    "0.1": 8073.0,
+    "0.25": 8073.0,
+    "0.5": 8073.0,
+    "1.0": 8073.0,
+    "inf": 8073.0
+   }
+  },
+  {
+   "t": 56.21672150000086,
+   "decisions": {
+    "approve": 2904.0,
+    "review": 200.0,
+    "block": 5085.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1573.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2229.0,
+    "0.01": 7614.0,
+    "0.02": 8031.0,
+    "0.05": 8126.0,
+    "0.1": 8189.0,
+    "0.25": 8189.0,
+    "0.5": 8189.0,
+    "1.0": 8189.0,
+    "inf": 8189.0
+   }
+  },
+  {
+   "t": 57.221467458002735,
+   "decisions": {
+    "approve": 2926.0,
+    "review": 200.0,
+    "block": 5149.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1583.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2247.0,
+    "0.01": 7692.0,
+    "0.02": 8117.0,
+    "0.05": 8212.0,
+    "0.1": 8275.0,
+    "0.25": 8275.0,
+    "0.5": 8275.0,
+    "1.0": 8275.0,
+    "inf": 8275.0
+   }
+  },
+  {
+   "t": 58.221753707999596,
+   "decisions": {
+    "approve": 2952.0,
+    "review": 200.0,
+    "block": 5221.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1596.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2272.0,
+    "0.01": 7777.0,
+    "0.02": 8215.0,
+    "0.05": 8310.0,
+    "0.1": 8373.0,
+    "0.25": 8373.0,
+    "0.5": 8373.0,
+    "1.0": 8373.0,
+    "inf": 8373.0
+   }
+  },
+  {
+   "t": 59.22501762500178,
+   "decisions": {
+    "approve": 2969.0,
+    "review": 200.0,
+    "block": 5295.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1614.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2287.0,
+    "0.01": 7856.0,
+    "0.02": 8305.0,
+    "0.05": 8401.0,
+    "0.1": 8464.0,
+    "0.25": 8464.0,
+    "0.5": 8464.0,
+    "1.0": 8464.0,
+    "inf": 8464.0
+   }
+  },
+  {
+   "t": 60.22622270799911,
+   "decisions": {
+    "approve": 2996.0,
+    "review": 200.0,
+    "block": 5374.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1642.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2317.0,
+    "0.01": 7951.0,
+    "0.02": 8411.0,
+    "0.05": 8507.0,
+    "0.1": 8570.0,
+    "0.25": 8570.0,
+    "0.5": 8570.0,
+    "1.0": 8570.0,
+    "inf": 8570.0
+   }
+  },
+  {
+   "t": 61.22772733300371,
+   "decisions": {
+    "approve": 3006.0,
+    "review": 200.0,
+    "block": 5398.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1649.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2331.0,
+    "0.01": 7984.0,
+    "0.02": 8445.0,
+    "0.05": 8541.0,
+    "0.1": 8604.0,
+    "0.25": 8604.0,
+    "0.5": 8604.0,
+    "1.0": 8604.0,
+    "inf": 8604.0
+   }
+  },
+  {
+   "t": 62.232824083002924,
+   "decisions": {
+    "approve": 3006.0,
+    "review": 200.0,
+    "block": 5398.0
+   },
+   "fallbacks": {
+    "feature_timeout": 41.0,
+    "feature_store_error": 0.0,
+    "circuit_open": 2.0,
+    "model_error": 0.0,
+    "no_model": 0.0,
+    "internal_error": 0.0,
+    "review_capacity": 1649.0
+   },
+   "latency_buckets": {
+    "0.001": 0.0,
+    "0.0025": 0.0,
+    "0.005": 2331.0,
+    "0.01": 7984.0,
+    "0.02": 8445.0,
+    "0.05": 8541.0,
+    "0.1": 8604.0,
+    "0.25": 8604.0,
+    "0.5": 8604.0,
+    "1.0": 8604.0,
+    "inf": 8604.0
+   }
+  }
+ ]
+}

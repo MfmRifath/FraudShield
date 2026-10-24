@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -16,20 +17,17 @@ def _samples(registry: CollectorRegistry, name: str) -> list[tuple[dict[str, str
     ]
 
 
-def histogram_quantiles(
-    registry: CollectorRegistry, metric: str, qs: tuple[float, ...] = (0.5, 0.95, 0.99)
+def bucket_quantiles(
+    buckets: Mapping[float, float], qs: tuple[float, ...] = (0.5, 0.95, 0.99)
 ) -> dict[str, float | None]:
-    """Quantiles of a histogram aggregated over all label sets (linear interpolation, like PromQL)."""
-    buckets: dict[float, float] = {}
-    for labels, v in _samples(registry, f"{metric}_bucket"):
-        le = float(labels["le"])
-        buckets[le] = buckets.get(le, 0.0) + v
+    """Quantiles from cumulative histogram buckets ``{le: count}`` (linear interpolation, like
+    PromQL's ``histogram_quantile``; a rank in the ``+Inf`` bucket returns the last finite edge)."""
     edges = sorted(buckets)
     total = buckets.get(math.inf, 0.0)
     out: dict[str, float | None] = {}
     for q in qs:
         key = f"p{round(q * 100)}"
-        if total == 0:
+        if total <= 0:
             out[key] = None
             continue
         rank, prev_le, prev_c = q * total, 0.0, 0.0
@@ -44,6 +42,17 @@ def histogram_quantiles(
                 break
             prev_le, prev_c = le, c
     return out
+
+
+def histogram_quantiles(
+    registry: CollectorRegistry, metric: str, qs: tuple[float, ...] = (0.5, 0.95, 0.99)
+) -> dict[str, float | None]:
+    """Quantiles of a histogram aggregated over all label sets."""
+    buckets: dict[float, float] = {}
+    for labels, v in _samples(registry, f"{metric}_bucket"):
+        le = float(labels["le"])
+        buckets[le] = buckets.get(le, 0.0) + v
+    return bucket_quantiles(buckets, qs)
 
 
 def counter_by(registry: CollectorRegistry, metric: str, label: str) -> dict[str, float]:

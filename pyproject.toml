@@ -70,6 +70,10 @@ orchestration = [
 monitoring = [
     "evidently==0.7.23",
 ]
+# Locust load generator (`make loadtest`); never in service images
+loadtest = [
+    "locust==2.46.7",
+]
 
 [build-system]
 requires = ["hatchling==1.32.4"]
@@ -80,7 +84,7 @@ packages = ["src/fraudshield"]
 
 [tool.uv]
 required-version = ">=0.12.23,<0.13"
-default-groups = ["dev", "data", "train", "orchestration", "monitoring"]
+default-groups = ["dev", "data", "train", "orchestration", "monitoring", "loadtest"]
 
 # ---------------------------------------------------------------- ruff
 [tool.ruff]
@@ -114,6 +118,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S311"]
 "notebooks/**" = ["S101", "E402"]
+# the load-test orchestrator drives `docker` / `docker compose` by design (fixed argv, no shell)
+"src/fraudshield/loadtest/runner.py" = ["S603", "S607"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
