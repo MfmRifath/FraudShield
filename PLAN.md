@@ -104,12 +104,14 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 
 ## Phase 7: Analyst UI
 
-- [ ] React + Vite + TS + TanStack Query + Recharts
-- [ ] Pages: Live Feed, Review Queue (F/L/E shortcuts), Case Detail, Model & Monitoring, Policy Simulator
-- [ ] Postgres cases/labels/audit_log; analyst labels -> `labels` topic
-- [ ] Policy simulator endpoint
+- [x] React + Vite + TS + TanStack Query + Recharts (`ui/`; 15 vitest tests, typecheck, build in CI)
+- [x] Pages: Live Feed, Review Queue (F/L/E shortcuts), Case Detail, Model & Monitoring, Policy Simulator
+- [x] Postgres cases/labels/audit_log; analyst labels -> `labels` topic (contract test on InMemory + Postgres)
+- [x] Policy simulator endpoint (`/policy/current`, `/policy/simulate` on the bundle's held-out window)
+- [x] Compose `ui` profile: nginx serves the build and proxies `/api` (SSE unbuffered; integration-tested)
 
 **DoD:** labeling cases in the UI appears in the next build_training_set output (tested).
+**Status:** met. `test_label_in_ui_appears_in_next_training_set` (InMemory) and `..._postgres` (compose Postgres -> `load_analyst_labels` -> `build_training_set`).
 
 ## Phase 8: Hardening & deploy
 
@@ -140,6 +142,7 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 - [ ] `make docs DATASET=ieee_cis` -> `docs/model_card.md` (Phase 2 DoD)
 - [ ] `make up-mlops` + `make retrain promote DATASET=ieee_cis` against the MLflow server, then `FS_MODEL_SOURCE=mlflow make up-mlops` to serve `@champion` (Phase 5 on real data)
 - [ ] Drift job on real served traffic with `FS_RETRAIN_FLOW=retrain-and-promote` (Phase 6 on real data; reference window must start after the 7-day warm-up)
+- [ ] Policy simulator + UI walkthrough on the real champion (its bundle carries the test-split policy window; Phase 7)
 - [ ] `python scripts/bench_serving.py --bundle artifacts/ieee_cis/bundle` (real-model latency; Phase 3)
 - [ ] `make up` with the real bundle (`FS_BUNDLE_SET=ieee_cis` / MLflow alias) + `make replay SOURCE=canonical DATASET=ieee_cis ARGS="--start ... --end ..."` (Phase 4 on real data; watch feature_timeout fallbacks for heavy email domains)
 
@@ -156,3 +159,4 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 | 2026-10-24 | 4 | Streaming. Compose core profile (10 services, healthchecks + mem limits, ~960 MiB), replayer, gateway, Quix processor, label emitter, hourly parquet sink, shadow scorer, RedisFeatureStore, Kafka sink in the API, consumer-lag metrics, dev bundles from the CC0 fixture. Parity < 1e-6 vs offline on InMemory + Redis stores, in-process pipeline and live stack. Mutation checks found a test gap (first-seen state mixing across columns undetected) -> overlapping Hypothesis value pools. Live run found a parquet idle-flush bug -> background timer + regression test. Quix caps forced pydantic 2.13.5, pydantic-settings 2.15.0, confluent-kafka 2.12.2. Host Redis port 6380 (6379 in use). Tests: 161 unit/parity/smoke + 5 integration passed. ADR-0010. |
 | 2026-10-24 | 5 | MLOps loop. PIT training set (chargeback ∪ analyst, chargeback wins), registry alias history + rollback, 4-check promotion gate + shadow comparison, retrain/promote CLI + Prefect 3.8.8 flows (served by the worker; weekly cron), runtime canary endpoint, mlops compose profile (Postgres 18, MLflow server, Prefect server/worker). One-command `make mlops-demo` (synthetic): the gate genuinely blocks v2 on net savings -> recorded forced promotion -> rollback. Found + fixed: registry bundle path assumption (MLflow stores artifacts under the dir name), MLflow global-URI dependence, CLI crash for dataset-less commands, API cold-start degrading the first request, MLflow server ~1 GB from GenAI job consumers (-> 430 MiB). FastAPI pinned 0.150.0 (Prefect 3.8 server breaks on >= 0.155). Tests: 173 unit/parity/smoke + 8 integration (core + mlops). ADR-0011. |
 | 2026-10-24 | 6 | Monitoring. Drift flow (Evidently 0.7.23 DataDriftPreset on top-20 champion features, PSI, decision mix, matured-label PR-AUC) over the parquet decisions/labels log, triggers retrain subflow; drift metrics via file collector on the worker; fraud-ring replay injection; Prometheus (scrapes, 5 alert rules, promtool-checked) + Grafana (4 generated dashboards, tested against exported metrics); shadow agreement metrics. `make drift-demo`: drift 60 % + PR-AUC drop -> retrain -> DriftDetected firing; 26/26 panels with data. Found: Evidently incompatible with pandas 3 (-> 2.3.3), trainer image missing the monitoring group, Makefile block duplicated by a non-unique edit anchor, warm-up drift false positive in a test (test premise wrong), empty-series panels (zero-init). Tests: 185 unit/parity/smoke + 10 integration (all profiles). ADR-0012. |
+| 2026-10-24 | 7 | Analyst UI. Postgres case store (cases/labels/audit_log, one-transaction labelling, idempotent open; contract test on InMemory + Postgres), card activity timeline (Redis, written by the processor), case context/audit, monitoring summary and policy simulator endpoints (bundles now carry `policy_window.parquet`), React 19 + Vite 8 + TS 7 UI with five pages and F/L/E shortcuts, nginx `ui` profile (:5180; SSE unbuffered; admin/metrics blocked). DoD tested on InMemory and compose Postgres. Found + fixed: the processor crashed on analyst labels (no `label_available_time`) and analyst labels were double-counted in online TE -> they no longer touch online TE (parity with offline; supersedes part of ADR-0010); nginx cached the API's IP across container recreation (502) -> Docker-DNS re-resolution; `test-integration-mlops` selected monitoring tests. Tests: 197 unit/parity/smoke (CI profile), 16 integration (all profiles), 15 vitest. ADR-0013. |

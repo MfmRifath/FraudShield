@@ -89,6 +89,24 @@ make drift-demo   # normal replay, then a 40 % "fraud ring" -> drift job -> Drif
 
 A daily Prefect job compares the served features (from the decision log) against the previous week. It checks Evidently feature drift on the champion's top-20 features, score PSI, the decision mix, and PR-AUC on matured labels, and triggers retraining when any threshold is crossed. Grafana dashboards: Service SLOs, Decision & Score mix, Champion vs Challenger, Pipeline health. Alerts cover p95 latency, fallback rate, consumer lag, drift and down targets. The latest demo run is summarised in [reports/drift/demo-summary.md](reports/drift/demo-summary.md); see [ADR-0012](docs/adr/0012-monitoring-and-drift.md).
 
+## Analyst UI
+
+```bash
+make up-ui        # core + mlops + ui: the UI on http://localhost:5180, review cases stored in Postgres
+make replay RATE=50 ARGS="--max-events 300"
+make ui-dev       # or: Vite dev server on http://localhost:5173 against `make up` (Node 24)
+make ui-test      # typecheck + vitest
+```
+
+Five pages:
+- **Live feed**: decisions over SSE, with a throughput sparkline.
+- **Review queue**: ordered by expected loss. Keyboard: `F` fraud, `L` legit, `E` open the case, `J`/`K` move.
+- **Case detail**: transaction fields, the three reason codes (value vs typical), the card's last 20 events, other cards on the same device or email domain, label buttons with notes, and the audit trail.
+- **Model & monitoring**: champion/challenger versions, decision mix, latency, and the latest drift check with its Evidently report.
+- **Policy simulator**: change the cost assumptions and the daily review capacity, and see decisions and net savings recomputed on the champion's held-out window.
+
+A label is written to Postgres (`cases`, `labels`, `audit_log`) in one transaction, and published to the `labels` topic. The next `build-training-set` run picks it up, which is tested end to end. nginx serves the build and proxies `/api` to the service; admin endpoints are not exposed there. See [ADR-0013](docs/adr/0013-analyst-ui-and-case-store.md).
+
 ## Design decisions
 
 Architecture Decision Records live in [docs/adr/](docs/adr/README.md).

@@ -51,4 +51,4 @@ Quix Streams pins `pydantic<2.14`, `pydantic-settings<2.16` and `confluent-kafka
 
 - `make up && make replay` runs the full topology; `make test-integration` verifies it (also in CI).
 - With an IEEE-scale email domain (e.g. gmail.com), the 7-day history read for distinct-uid counts is large, so per-request fetches can exceed the 10 ms budget and fall back to the degraded model. A bucketed or approximate distinct counter is the planned mitigation; Phase 8 measures it.
-- Analyst labels go to the same `labels` topic, so the processor applies them online as well.
+- Analyst labels go to the same `labels` topic. *Superseded by [ADR-0013](0013-analyst-ui-and-case-store.md):* the processor skips them, because online target encodings count chargebacks only, as offline features do.

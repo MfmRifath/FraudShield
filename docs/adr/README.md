@@ -17,3 +17,4 @@ Status: Proposed | Accepted | Superseded by ADR-NNNN.
 | [0010](0010-streaming-design.md) | Streaming topology, Redis feature store and dependency caps | Accepted |
 | [0011](0011-mlops-loop.md) | MLOps loop: training set, registry history, promotion gate, Prefect | Accepted |
 | [0012](0012-monitoring-and-drift.md) | Monitoring, drift detection and alerting | Accepted |
+| [0013](0013-analyst-ui-and-case-store.md) | Analyst UI, case store and the label path | Accepted |
