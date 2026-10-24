@@ -72,5 +72,20 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8000/ready)" = "503"
           docker rm -f api
 
-  # Added in later phases (see PLAN.md):
-  #   integration:       Phase 4  - docker compose core profile + `make test-integration`
+  integration:
+    name: compose integration (core profile)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    needs: [lint-test]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start the core stack and run integration tests
+        # dev bundles (fixture-trained), compose up --wait, pytest -m integration in the test
+        # container on the compose network
+        run: make test-integration
+      - name: Stack logs on failure
+        if: failure()
+        run: docker compose --profile core logs --no-color --tail=200
+      - name: Tear down
+        if: always()
+        run: make down-v

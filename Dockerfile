@@ -19,7 +19,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --home-dir /app --no-create-home app
+    && useradd --system --uid 10001 --gid app --home-dir /app --no-create-home app \
+    && mkdir -p /data/stream && chown app:app /data/stream
 WORKDIR /app
 COPY --from=build --chown=app:app /app/.venv /app/.venv
 COPY --chown=app:app configs ./configs

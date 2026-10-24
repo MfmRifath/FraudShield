@@ -1,0 +1,193 @@
+# FraudShield local stack.
+#   make up       -> profile "core": redpanda, console, redis, api, processor + stream workers
+# Later phases add profiles: mlops (postgres, mlflow, prefect), monitoring (prometheus, grafana), ui.
+# Every service has a healthcheck and a memory limit; all images are multi-arch (amd64/arm64).
+# Host ports are overridable: FS_KAFKA_PORT, FS_REDIS_PORT (default 6380), FS_API_PORT, FS_CONSOLE_PORT, ...
+
+name: fraudshield
+
+x-app: &app
+  image: fraudshield-api:dev
+  build: .
+  restart: unless-stopped
+  volumes:
+    - ./artifacts:/app/artifacts:ro
+  environment: &app-env
+    FRAUDSHIELD_CONFIG: /app/configs/base.yaml
+    FRAUDSHIELD_LOG_LEVEL: INFO
+    # Until the real training run, the stack serves dev bundles trained on the CC0 fixture.
+    FRAUDSHIELD_SERVING__DATASET: ${FS_DATASET:-sparkov}
+    FRAUDSHIELD_SERVING__BUNDLE_DIR: /app/artifacts/${FS_BUNDLE_SET:-dev}/bundle
+    FRAUDSHIELD_SERVING__CHALLENGER_BUNDLE_DIR: /app/artifacts/${FS_BUNDLE_SET:-dev}/challenger
+    FRAUDSHIELD_SERVING__FEATURE_STORE: redis
+    FRAUDSHIELD_SERVING__PUBLISHER: kafka
+    FRAUDSHIELD_SERVING__UPDATE_STORE_INLINE: "false"
+    FRAUDSHIELD_SERVING__ADMIN_TOKEN: ${FS_ADMIN_TOKEN:-change-me-locally}
+    FRAUDSHIELD_STREAMING__BOOTSTRAP_SERVERS: redpanda:9092
+    FRAUDSHIELD_STREAMING__REDIS_URL: redis://redis:6379/0
+    FRAUDSHIELD_STREAMING__API_URL: http://api:8000
+    FRAUDSHIELD_STREAMING__PARQUET_DIR: /data/stream
+    FRAUDSHIELD_STREAMING__PARQUET_FLUSH_S: "5"
+    MLFLOW_DISABLE_AGENT_HINT: "1"
+
+x-worker-health: &worker-health
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/metrics', timeout=2)"]
+  interval: 10s
+  timeout: 3s
+  retries: 5
+  start_period: 20s
+
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.2
+    profiles: [core]
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=1G
+      - --overprovisioned
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --default-log-level=warn
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:${FS_KAFKA_PORT:-19092}
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+    ports:
+      - "${FS_KAFKA_PORT:-19092}:19092"
+      - "${FS_REDPANDA_ADMIN_PORT:-9644}:9644"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    mem_limit: 1536m
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+
+  topics-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.2
+    profiles: [core]
+    depends_on:
+      redpanda: { condition: service_healthy }
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >-
+        for t in transactions.raw transactions.truth decisions labels shadow.scores; do
+          rpk topic create $$t -p 3 -r 1 -X brokers=redpanda:9092 || true;
+        done; rpk topic list -X brokers=redpanda:9092
+    restart: "no"
+    mem_limit: 128m
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v3.13.1
+    profiles: [core]
+    depends_on:
+      redpanda: { condition: service_healthy }
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "${FS_CONSOLE_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/admin/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 256m
+
+  redis:
+    image: redis:8.10.2-alpine
+    profiles: [core]
+    # noeviction: silently evicting feature history would corrupt features; a failed write
+    # degrades the API visibly instead. Ephemeral by design (no persistence).
+    command: ["redis-server", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${FS_REDIS_PORT:-6380}:6379"  # 6380 on the host: 6379 is often taken by another Redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 640m
+
+  api:
+    <<: *app
+    profiles: [core]
+    depends_on:
+      redis: { condition: service_healthy }
+      topics-init: { condition: service_completed_successfully }
+    ports:
+      - "${FS_API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    mem_limit: 768m
+
+  processor:
+    <<: *app
+    profiles: [core]
+    command: ["python", "-m", "fraudshield.streaming", "processor"]
+    depends_on:
+      redis: { condition: service_healthy }
+      topics-init: { condition: service_completed_successfully }
+    ports:
+      - "9101:9100"
+    healthcheck: *worker-health
+    mem_limit: 384m
+
+  gateway:
+    <<: *app
+    profiles: [core]
+    command: ["python", "-m", "fraudshield.streaming", "gateway"]
+    depends_on:
+      api: { condition: service_healthy }
+    ports:
+      - "9102:9100"
+    healthcheck: *worker-health
+    mem_limit: 256m
+
+  label-emitter:
+    <<: *app
+    profiles: [core]
+    command: ["python", "-m", "fraudshield.streaming", "label-emitter"]
+    depends_on:
+      topics-init: { condition: service_completed_successfully }
+    ports:
+      - "9103:9100"
+    healthcheck: *worker-health
+    mem_limit: 256m
+
+  parquet-sink:
+    <<: *app
+    profiles: [core]
+    command: ["python", "-m", "fraudshield.streaming", "parquet-sink"]
+    depends_on:
+      topics-init: { condition: service_completed_successfully }
+    volumes:
+      - ./artifacts:/app/artifacts:ro
+      - stream-data:/data/stream
+    ports:
+      - "9104:9100"
+    healthcheck: *worker-health
+    mem_limit: 384m
+
+  shadow:
+    <<: *app
+    profiles: [core]
+    command: ["python", "-m", "fraudshield.streaming", "shadow"]
+    depends_on:
+      topics-init: { condition: service_completed_successfully }
+    ports:
+      - "9105:9100"
+    healthcheck: *worker-health
+    mem_limit: 512m
+
+volumes:
+  redpanda-data:
+  stream-data:

@@ -65,9 +65,17 @@ bench-docker: ## Same benchmark inside the Linux test container
 test-cov: ## Tests with coverage report
 	$(RUN) pytest -m "not integration" --cov --cov-report=term-missing $(PYTEST_ARGS)
 
+TEST_IMAGE_RUN = docker run --rm -v "$(CURDIR)":/app -v fraudshield-test-venv:/venv \
+	-v fraudshield-test-uvcache:/root/.cache/uv -e PYTHONDONTWRITEBYTECODE=1 -e MLFLOW_DISABLE_AGENT_HINT=1
+
 .PHONY: test-integration
-test-integration: ## Docker compose integration tests
-	$(call not_yet,Phase 4)
+test-integration: up ## Compose integration tests (test container on the compose network)
+	$(TEST_IMAGE_RUN) --network fraudshield_default \
+		-e FRAUDSHIELD_STREAMING__BOOTSTRAP_SERVERS=redpanda:9092 \
+		-e FRAUDSHIELD_STREAMING__REDIS_URL=redis://redis:6379/0 \
+		-e FRAUDSHIELD_STREAMING__API_URL=http://api:8000 \
+		-e FRAUDSHIELD_SERVING__DATASET=sparkov \
+		fraudshield-test:dev sh -c 'uv sync --frozen -q && uv run --frozen pytest -m integration -p no:cacheprovider $(PYTEST_ARGS)'
 
 .PHONY: clean
 clean: ## Remove caches and build outputs (keeps data/)
@@ -113,9 +121,30 @@ docs: ## Render docs/model_card.md from reports/<ds>/metrics.json
 	$(RUN) fraudshield model-card $(DS_ARG)
 
 # ---------------------------------------------------------------- runtime
+COMPOSE ?= docker compose
+PROFILES ?= --profile core
+
+.PHONY: dev-bundle
+dev-bundle: ## Train dev champion/challenger bundles on the CC0 fixture -> artifacts/dev (in Docker)
+	docker build -q -t fraudshield-test:dev -f infra/dev/Dockerfile.test infra/dev >/dev/null
+	$(TEST_IMAGE_RUN) fraudshield-test:dev sh -c 'uv sync --frozen -q && uv run --frozen python -m fraudshield.devtools dev-bundles'
+
 .PHONY: up
-up: ## docker compose up (core + mlops + monitoring + ui)
-	$(call not_yet,Phase 4)
+up: ## docker compose up --wait (profile core; later phases add mlops/monitoring/ui)
+	@test -f artifacts/dev/bundle/bundle.json || $(MAKE) dev-bundle
+	$(COMPOSE) $(PROFILES) up -d --build --wait
+
+.PHONY: down
+down: ## Stop the stack (keeps volumes; `make down-v` also deletes them)
+	$(COMPOSE) $(PROFILES) down
+
+.PHONY: down-v
+down-v: ## Stop the stack and delete its volumes
+	$(COMPOSE) $(PROFILES) down -v
+
+.PHONY: ps
+ps: ## Stack status
+	$(COMPOSE) $(PROFILES) ps
 
 .PHONY: up-lite
 up-lite: ## docker compose up with the 8 GB lite profile
@@ -125,9 +154,11 @@ up-lite: ## docker compose up with the 8 GB lite profile
 demo: ## Single-container demo (FastAPI + replayer + in-memory store + UI)
 	$(call not_yet,Phase 8)
 
+RATE ?= 50
+SOURCE ?= fixture
 .PHONY: replay
-replay: ## Replay a time window into transactions.raw
-	$(call not_yet,Phase 4)
+replay: ## Replay into transactions.raw (SOURCE=fixture|canonical, RATE=events/s, ARGS=...)
+	$(RUN) fraudshield replay --source $(SOURCE) --rate $(RATE) $(DS_ARG) $(ARGS)
 
 .PHONY: drift-demo
 drift-demo: ## Replay with injected fraud-ring drift
