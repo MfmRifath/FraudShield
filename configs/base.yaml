@@ -56,6 +56,23 @@ training:
   tune:
     n_trials: 40
 
+serving:
+  # "bundle": load artifacts/<ds>/bundle (demo, tests); "mlflow": models:/fraudshield@champion.
+  model_source: bundle
+  dataset: ieee_cis
+  bundle_dir: artifacts/ieee_cis/bundle
+  champion_uri: models:/fraudshield@champion
+  challenger_uri: models:/fraudshield@challenger
+  load_challenger: true
+  canary_pct: 0            # % of uids (stable hash) routed to @challenger
+  feature_timeout_ms: 10
+  breaker_failure_threshold: 5
+  breaker_reset_s: 30
+  update_store_inline: true   # false when the stream processor updates the store (Phase 4)
+  publish_queue_size: 10000
+  sse_queue_size: 1000
+  # admin_token: set FRAUDSHIELD_SERVING__ADMIN_TOKEN to enable POST /admin/reload
+
 datasets:
   ieee_cis:
     kaggle_handle: ieee-fraud-detection

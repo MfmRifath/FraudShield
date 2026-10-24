@@ -16,7 +16,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -187,8 +187,30 @@ class TrainingConfig(_Frozen):
     tune: TuneConfig = TuneConfig()
 
 
+class ServingConfig(_Frozen):
+    """Scoring API (ADR-0009)."""
+
+    model_source: Literal["bundle", "mlflow"] = "bundle"
+    dataset: DatasetName = "ieee_cis"
+    bundle_dir: Path = Path("artifacts/ieee_cis/bundle")
+    challenger_bundle_dir: Path | None = None
+    champion_uri: str = "models:/fraudshield@champion"
+    challenger_uri: str = "models:/fraudshield@challenger"
+    load_challenger: bool = True
+    canary_pct: int = Field(default=0, ge=0, le=100)
+    feature_timeout_ms: float = Field(default=10.0, gt=0)
+    breaker_failure_threshold: int = Field(default=5, ge=1)
+    breaker_reset_s: float = Field(default=30.0, gt=0)
+    update_store_inline: bool = Field(
+        default=True, description="API updates the store after scoring (no stream processor)"
+    )
+    publish_queue_size: int = Field(default=10_000, ge=1)
+    sse_queue_size: int = Field(default=1_000, ge=1)
+    admin_token: SecretStr | None = None
+
+
 class Settings(BaseSettings):
-    """Root settings object. Later phases add sections (serving, streaming, ...)."""
+    """Root settings object. Later phases add sections (streaming, ...)."""
 
     model_config = SettingsConfigDict(
         env_prefix="FRAUDSHIELD_",
@@ -206,6 +228,7 @@ class Settings(BaseSettings):
     labels: LabelsConfig = LabelsConfig()
     features: FeaturesConfig = FeaturesConfig()
     training: TrainingConfig = TrainingConfig()
+    serving: ServingConfig = ServingConfig()
 
     @model_validator(mode="after")
     def _labels_mature_within_gap(self) -> Self:
