@@ -6,7 +6,7 @@ Serve them (prefect-worker container): ``python -m fraudshield.flows serve``.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -121,3 +121,57 @@ def mlops_demo_flow(
     # on the compose stack the worker tracks to the MLflow server; locally the demo uses SQLite
     server = uri if uri.startswith(("http://", "https://")) else None
     return mlops_demo(s, Path(workdir), tracking_uri or server, model_name=model_name)
+
+
+@flow(name="drift")
+def drift_flow(
+    as_of: datetime | None = None,
+    reference_days: float | None = None,
+    current_days: float | None = None,
+    retrain: bool = True,
+    namespace: str | None = None,
+) -> dict[str, Any]:
+    """Daily drift check over the served-traffic log; triggers the configured retrain flow.
+
+    ``namespace`` restricts the log to one replay namespace (demos/tests share the log).
+    """
+    from fraudshield.monitoring.drift import detect_drift, load_decisions, load_labels
+    from fraudshield.serving.models import ModelManager
+
+    s = _settings()
+    logger = get_run_logger()
+    mm = ModelManager(
+        s.model_copy(update={"serving": s.serving.model_copy(update={"load_challenger": False})})
+    )
+    mm.reload()
+    if mm.champion is None:  # pragma: no cover - reload raises instead
+        raise RuntimeError("no champion model to monitor")
+    stream = s.streaming.parquet_dir
+    decisions, labels = load_decisions(stream), load_labels(stream)
+    if namespace:
+        decisions = decisions.filter(pl.col("txn_id").str.starts_with(f"{namespace}:"))
+        labels = labels.filter(pl.col("txn_id").str.starts_with(f"{namespace}:"))
+    res = detect_drift(
+        decisions, labels, mm.champion.bundle, s.monitoring, as_of=as_of,
+        out_dir=s.monitoring.report_dir, reference_days=reference_days, current_days=current_days,
+    )  # fmt: skip
+    logger.info(
+        "drift: share=%s psi=%s triggers=%s skipped=%s",
+        res.drift_share,
+        res.score_psi,
+        res.triggers,
+        res.skipped,
+    )
+    out = res.as_dict()
+    target = s.monitoring.retrain_flow
+    if res.should_retrain and retrain and target != "none":
+        logger.warning("drift detected -> triggering %s", target)
+        if target == "retrain-and-promote":
+            out["retrain"] = retrain_and_promote()
+        else:
+            stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")  # fresh registry entry per drift run
+            out["retrain"] = mlops_demo_flow(
+                workdir=f"artifacts/drift-retrain-{stamp}",
+                model_name=f"fraudshield-drift-demo-{stamp}",
+            )
+    return out
