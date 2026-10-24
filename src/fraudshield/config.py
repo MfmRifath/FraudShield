@@ -248,8 +248,24 @@ class MLOpsConfig(_Frozen):
     )
 
 
+class MonitoringConfig(_Frozen):
+    """Daily drift job (ADR-0012). Windows are in event time, ending at ``as_of``."""
+
+    top_k_features: int = Field(default=20, ge=1)
+    drift_share_threshold: float = Field(default=0.3, gt=0, le=1)
+    psi_threshold: float = Field(default=0.2, gt=0)
+    pr_auc_drop_threshold: float = Field(default=0.10, gt=0, le=1, description="relative drop")
+    reference_days: float = Field(default=7.0, gt=0)
+    current_days: float = Field(default=1.0, gt=0)
+    min_rows: int = Field(default=200, ge=10)
+    min_label_positives: int = Field(default=20, ge=1)
+    report_dir: Path = Path("reports/drift")
+    retrain_flow: Literal["retrain-and-promote", "mlops-demo", "none"] = "retrain-and-promote"
+    metrics_port: int = Field(default=9100, ge=1, le=65535)
+
+
 class Settings(BaseSettings):
-    """Root settings object. Later phases add sections (monitoring, ...)."""
+    """Root settings object."""
 
     model_config = SettingsConfigDict(
         env_prefix="FRAUDSHIELD_",
@@ -270,6 +286,7 @@ class Settings(BaseSettings):
     serving: ServingConfig = ServingConfig()
     streaming: StreamingConfig = StreamingConfig()
     mlops: MLOpsConfig = MLOpsConfig()
+    monitoring: MonitoringConfig = MonitoringConfig()
 
     @model_validator(mode="after")
     def _labels_mature_within_gap(self) -> Self:

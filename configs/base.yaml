@@ -106,6 +106,21 @@ mlops:
   parity_rows: 2000
   # api_url: http://api:8000   # set in compose so promote/rollback hot-reload the API
 
+monitoring:
+  # drift job: retrain if drifted share among the champion's top-k features > drift_share_threshold,
+  # OR score PSI > psi_threshold, OR matured-label PR-AUC drops by > pr_auc_drop_threshold (relative)
+  top_k_features: 20
+  drift_share_threshold: 0.3
+  psi_threshold: 0.2
+  pr_auc_drop_threshold: 0.10
+  reference_days: 7
+  current_days: 1
+  min_rows: 200
+  min_label_positives: 20
+  report_dir: reports/drift
+  retrain_flow: retrain-and-promote   # mlops-demo in the drift demo (synthetic, no real training)
+  metrics_port: 9100
+
 datasets:
   ieee_cis:
     kaggle_handle: ieee-fraud-detection
