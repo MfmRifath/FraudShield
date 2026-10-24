@@ -16,10 +16,15 @@ import pytest
 
 from fraudshield.config import LgbmConfig, PathsConfig, Settings
 from fraudshield.model_bundle import ModelBundle
+from fraudshield.synthetic import (
+    SPLITS,
+    synthetic_dataset_config,
+    synthetic_features,
+    synthetic_settings,
+)
 from fraudshield.training.model_card import write_model_card
 from fraudshield.training.train import TrainResult, prepare_splits, run_training
 from fraudshield.training.tune import TuneResult, load_tuned, tune_lgbm
-from tests.synthetic import SPLITS, synthetic_dataset_config, synthetic_features, synthetic_settings
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -78,7 +83,7 @@ def test_training_run_end_to_end(
     assert "net_savings_vs_rules_only" in report["evals"]["lgbm_full"]["dollars"]
     assert {"new_uid", "known_uid"} >= set(report["segments"])
     for f in ("comparison.md", "cost_sensitivity.md", "metrics.json", "model_card.md",
-              "img/pr_curves.png", "img/reliability.png", "img/cost_sensitivity.png"):  # fmt: skip
+              "img/pr_curves.png", "img/shap_summary.png", "img/reliability.png", "img/cost_sensitivity.png"):  # fmt: skip
         assert (r.report_dir / f).is_file(), f
     assert (
         json.loads((r.report_dir / "metrics.json").read_text())["meta"]["model_version"]

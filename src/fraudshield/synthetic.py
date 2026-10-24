@@ -1,4 +1,4 @@
-"""Synthetic transactions with a planted fraud signal, for training smoke tests.
+"""Synthetic transactions with a planted fraud signal (smoke tests, latency benchmark).
 
 Not a benchmark: the signal (compromised cards making bursts of large transactions on a shared
 device) is deliberately easy, so tests can assert the pipeline *learns something*.
@@ -111,3 +111,89 @@ def _row(
 
 def synthetic_features(n: int = 10_000, seed: int = 0, te_smoothing: float = 50.0) -> pl.DataFrame:
     return compute_offline(synthetic_canonical(n, seed), build_feature_set(EXTRAS, te_smoothing))
+
+
+def build_synthetic_bundle(
+    settings: Settings,
+    out_dir: Any,
+    *,
+    features: pl.DataFrame | None = None,
+    rounds: int = 20,
+    num_leaves: int = 15,
+    seed: int = 0,
+    label_noise: float = 0.0,
+) -> Any:
+    """Train full + degraded boosters on synthetic data and save a ModelBundle (no MLflow).
+
+    ``settings`` must come from ``synthetic_settings`` so the feature set matches. Used by API
+    tests (small) and the latency benchmark (production-sized trees); never a reported model.
+    ``label_noise`` flips that share of training labels: the planted signal is so easy that
+    LightGBM otherwise stops splitting (stumps), which would make a latency benchmark optimistic.
+    """
+    from pathlib import Path
+
+    from fraudshield.model_bundle import BundleSpec, ModelBundle, VariantSpec
+    from fraudshield.model_bundle import Variant as BundleVariant
+    from fraudshield.pipeline import feature_set_for
+    from fraudshield.reasons import ReasonMapper
+    from fraudshield.training.calibrate import fit_calibrator
+    from fraudshield.training.costs import CostConfig
+    from fraudshield.training.matrix import CategoryEncoder, build_matrix, typical_values
+    from fraudshield.training.models import lgbm_params, train_lgbm
+    from fraudshield.training.splits import assign_splits
+
+    fs = feature_set_for(settings, "sparkov")
+    feats = features if features is not None else synthetic_features(te_smoothing=fs.te_smoothing)
+    df = assign_splits(feats, ORIGIN, SPLITS).filter(pl.col("label").is_not_null())
+    if label_noise > 0:
+        flip = np.random.default_rng(seed).random(df.height) < label_noise
+        df = df.with_columns(
+            label=pl.when(pl.Series(flip)).then(1 - pl.col("label")).otherwise(pl.col("label"))
+        )
+    tr, va = df.filter(pl.col("split") == "train"), df.filter(pl.col("split") == "val")
+    enc = CategoryEncoder.fit(tr, fs.categorical, 5)
+    cfg = settings.training.lgbm.model_copy(
+        update={"num_leaves": num_leaves, "min_child_samples": 20}
+    )
+    params = lgbm_params(cfg, seed)
+    boosters: dict[BundleVariant, Any] = {}
+    cals: dict[BundleVariant, Any] = {}
+    variants: tuple[tuple[BundleVariant, list[str]], ...] = (
+        ("full", fs.names),
+        ("degraded", fs.request_only),
+    )
+    for variant, names in variants:
+        b = train_lgbm(
+            build_matrix(tr, names, enc),
+            tr["label"].to_numpy(),
+            names,
+            fs.categorical,
+            params,
+            rounds,
+        )
+        cals[variant] = fit_calibrator(
+            b.predict(build_matrix(va, names, enc)), va["label"].to_numpy()
+        )
+        boosters[variant] = b
+    typical = typical_values(tr, fs.names, fs.categorical)
+    spec = BundleSpec(
+        metadata={
+            "dataset": "synthetic",
+            "feature_set_hash": fs.spec_hash(),
+            "created_at": "synthetic",
+            "model_version": f"synthetic-{rounds}x{num_leaves}",
+        },
+        encoder=enc,
+        full=VariantSpec(
+            booster_file="full.txt", feature_names=tuple(fs.names), calibrator=cals["full"]
+        ),
+        degraded=VariantSpec(
+            booster_file="degraded.txt",
+            feature_names=tuple(fs.request_only),
+            calibrator=cals["degraded"],
+        ),
+        costs=CostConfig.load(settings.paths.costs),
+        typical=typical,
+        reason_map=ReasonMapper.from_feature_set(fs, fs.names, typical).mapping(),
+    )
+    return ModelBundle(spec, boosters).save(Path(out_dir))
