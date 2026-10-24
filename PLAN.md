@@ -94,12 +94,13 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 
 ## Phase 6: Monitoring
 
-- [ ] Evidently 0.7 drift flow (DataDriftPreset, score PSI, decision mix) + retrain triggers
-- [ ] Fraud-ring drift-injection replay mode
-- [ ] Prometheus scrape config; Grafana dashboards (Service SLOs, Decision & Score mix, Champion vs Challenger, Pipeline health)
-- [ ] Alert rules (p95 > 100 ms 5m, fallback > 1%, lag > 30 s)
+- [x] Evidently 0.7 drift flow (DataDriftPreset on the champion's top-20 features, score PSI, decision mix, matured-label PR-AUC) + retrain triggers (> 30 % drifted, PSI > 0.2, PR-AUC drop > 10 %); daily Prefect deployment; HTML/JSON reports in `reports/drift/`
+- [x] Fraud-ring drift-injection replay mode (`fraudshield replay --drift SHARE`)
+- [x] Prometheus scrape config (API, 5 stream workers, prefect-worker drift metrics, Redpanda); Grafana dashboards (Service SLOs, Decision & Score mix, Champion vs Challenger, Pipeline health), generated + tested
+- [x] Alert rules (p95 > 100 ms 5m, fallback > 1%, lag > 30 s, target down, DriftDetected), validated by promtool
 
 **DoD:** `make drift-demo` produces a drift alert that triggers retrain; dashboards load with data.
+**Status:** met on the fixture (no dataset download): feature drift 60 % + matured PR-AUC drop trigger, the retrain flow registers a model, Prometheus fires `DriftDetected`, Grafana 4 dashboards / 26 of 26 panels with data (`reports/drift/demo-summary.md`).
 
 ## Phase 7: Analyst UI
 
@@ -138,6 +139,7 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 - [ ] `make tune` + `make train` for ieee_cis (and sparkov for the demo); commit `configs/tuned/*.json`, `reports/<ds>/*.md|json|png`
 - [ ] `make docs DATASET=ieee_cis` -> `docs/model_card.md` (Phase 2 DoD)
 - [ ] `make up-mlops` + `make retrain promote DATASET=ieee_cis` against the MLflow server, then `FS_MODEL_SOURCE=mlflow make up-mlops` to serve `@champion` (Phase 5 on real data)
+- [ ] Drift job on real served traffic with `FS_RETRAIN_FLOW=retrain-and-promote` (Phase 6 on real data; reference window must start after the 7-day warm-up)
 - [ ] `python scripts/bench_serving.py --bundle artifacts/ieee_cis/bundle` (real-model latency; Phase 3)
 - [ ] `make up` with the real bundle (`FS_BUNDLE_SET=ieee_cis` / MLflow alias) + `make replay SOURCE=canonical DATASET=ieee_cis ARGS="--start ... --end ..."` (Phase 4 on real data; watch feature_timeout fallbacks for heavy email domains)
 
@@ -153,3 +155,4 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 | 2026-10-24 | 3 | Serving. Online executor + InMemoryFeatureStore (parity < 1e-6 on fixture + generated frames; mutation-checked), FastAPI app (score, health/ready/metrics, native SSE, cases, admin reload, model info), scoring pipeline with 10 ms timeout + circuit breaker + degraded/rules-only fallbacks, canary, skew guard, non-blocking publisher, Dockerfile (1.22 GB, 118 MiB RSS idle with synthetic bundle), CI docker-build job. Deps split core vs `train` group; FastAPI 0.162 / Starlette 1.9 (TestClient -> httpx2). Benchmark caught its own flaw (synthetic stumps: 2.6 leaves/tree) -> label noise -> 63 leaves/tree: service p95 4.53 ms, HTTP 7.66 ms, degraded 2.49 ms (committed report). SHAP summary plot added (Phase 2 leftover). Tests: 143 passed (Linux container; CI profile 3m37s). ADR-0009. |
 | 2026-10-24 | 4 | Streaming. Compose core profile (10 services, healthchecks + mem limits, ~960 MiB), replayer, gateway, Quix processor, label emitter, hourly parquet sink, shadow scorer, RedisFeatureStore, Kafka sink in the API, consumer-lag metrics, dev bundles from the CC0 fixture. Parity < 1e-6 vs offline on InMemory + Redis stores, in-process pipeline and live stack. Mutation checks found a test gap (first-seen state mixing across columns undetected) -> overlapping Hypothesis value pools. Live run found a parquet idle-flush bug -> background timer + regression test. Quix caps forced pydantic 2.13.5, pydantic-settings 2.15.0, confluent-kafka 2.12.2. Host Redis port 6380 (6379 in use). Tests: 161 unit/parity/smoke + 5 integration passed. ADR-0010. |
 | 2026-10-24 | 5 | MLOps loop. PIT training set (chargeback ∪ analyst, chargeback wins), registry alias history + rollback, 4-check promotion gate + shadow comparison, retrain/promote CLI + Prefect 3.8.8 flows (served by the worker; weekly cron), runtime canary endpoint, mlops compose profile (Postgres 18, MLflow server, Prefect server/worker). One-command `make mlops-demo` (synthetic): the gate genuinely blocks v2 on net savings -> recorded forced promotion -> rollback. Found + fixed: registry bundle path assumption (MLflow stores artifacts under the dir name), MLflow global-URI dependence, CLI crash for dataset-less commands, API cold-start degrading the first request, MLflow server ~1 GB from GenAI job consumers (-> 430 MiB). FastAPI pinned 0.150.0 (Prefect 3.8 server breaks on >= 0.155). Tests: 173 unit/parity/smoke + 8 integration (core + mlops). ADR-0011. |
+| 2026-10-24 | 6 | Monitoring. Drift flow (Evidently 0.7.23 DataDriftPreset on top-20 champion features, PSI, decision mix, matured-label PR-AUC) over the parquet decisions/labels log, triggers retrain subflow; drift metrics via file collector on the worker; fraud-ring replay injection; Prometheus (scrapes, 5 alert rules, promtool-checked) + Grafana (4 generated dashboards, tested against exported metrics); shadow agreement metrics. `make drift-demo`: drift 60 % + PR-AUC drop -> retrain -> DriftDetected firing; 26/26 panels with data. Found: Evidently incompatible with pandas 3 (-> 2.3.3), trainer image missing the monitoring group, Makefile block duplicated by a non-unique edit anchor, warm-up drift false positive in a test (test premise wrong), empty-series panels (zero-init). Tests: 185 unit/parity/smoke + 10 integration (all profiles). ADR-0012. |

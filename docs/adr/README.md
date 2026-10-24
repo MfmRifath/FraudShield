@@ -16,3 +16,4 @@ Status: Proposed | Accepted | Superseded by ADR-NNNN.
 | [0009](0009-serving-design.md) | Serving design (online features, fallbacks, packaging) | Accepted |
 | [0010](0010-streaming-design.md) | Streaming topology, Redis feature store and dependency caps | Accepted |
 | [0011](0011-mlops-loop.md) | MLOps loop: training set, registry history, promotion gate, Prefect | Accepted |
+| [0012](0012-monitoring-and-drift.md) | Monitoring, drift detection and alerting | Accepted |

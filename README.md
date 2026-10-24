@@ -2,7 +2,7 @@
 
 **Real-time fraud detection service**: point-in-time-correct features, a calibrated LightGBM model with a cost-aware approve/review/block policy, streaming feature updates (Redpanda + Quix Streams + Redis), a champion/challenger MLOps loop (MLflow + Prefect), drift monitoring (Evidently, Prometheus, Grafana) and an analyst review UI (React).
 
-> **Status: under construction (Phases 0-5 coded: foundations, point-in-time features, modeling, scoring API, streaming, MLOps loop).** See [PLAN.md](PLAN.md) for the roadmap. No model metrics are reported yet. Every number that appears here later will be produced by a script in this repo that you can rerun.
+> **Status: under construction (Phases 0-6 coded: foundations, point-in-time features, modeling, scoring API, streaming, MLOps loop, monitoring).** See [PLAN.md](PLAN.md) for the roadmap. No model metrics are reported yet. Every number that appears here later will be produced by a script in this repo that you can rerun.
 
 ## Quickstart (development)
 
@@ -79,6 +79,15 @@ fraudshield canary 10    # send 10 % of cards to @challenger
 ```
 
 Promotion moves the MLflow alias `@champion` only if the challenger passes every check: PR-AUC within 0.005 of the champion, net savings at least the champion's, single-row p95 latency ≤ 5 ms, and online/offline feature parity. A shadow comparison is reported alongside. Retraining uses matured chargeback labels plus analyst labels, point-in-time (see [ADR-0011](docs/adr/0011-mlops-loop.md)). Prefect runs `retrain-and-promote` weekly.
+
+## Monitoring and drift
+
+```bash
+make up-all       # + Prometheus (http://localhost:9090) and Grafana (http://localhost:3000, anonymous viewer)
+make drift-demo   # normal replay, then a 40 % "fraud ring" -> drift job -> DriftDetected alert -> retrain
+```
+
+A daily Prefect job compares the served features (from the decision log) against the previous week. It checks Evidently feature drift on the champion's top-20 features, score PSI, the decision mix, and PR-AUC on matured labels, and triggers retraining when any threshold is crossed. Grafana dashboards: Service SLOs, Decision & Score mix, Champion vs Challenger, Pipeline health. Alerts cover p95 latency, fallback rate, consumer lag, drift and down targets. The latest demo run is summarised in [reports/drift/demo-summary.md](reports/drift/demo-summary.md); see [ADR-0012](docs/adr/0012-monitoring-and-drift.md).
 
 ## Design decisions
 
