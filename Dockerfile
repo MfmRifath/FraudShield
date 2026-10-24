@@ -67,7 +67,7 @@ CMD ["uvicorn", "--factory", "fraudshield.serving.app:create_app", "--host", "0.
 # ---------------------------------------------------------------- demo (single container)
 # docker build --target demo -t fraudshield-demo .   (or: make demo)
 # API + in-process replayer + in-memory feature/case stores + the built UI, < 1 GB RAM.
-FROM node:24.21.0-alpine AS ui-build
+FROM node:26.11.1-alpine AS ui-build
 WORKDIR /ui
 COPY ui/package.json ui/package-lock.json ui/.npmrc ./
 RUN npm ci --no-audit --no-fund
