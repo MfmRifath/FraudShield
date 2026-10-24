@@ -2,7 +2,7 @@
 #   make up         -> profile "core": redpanda, console, redis, api, processor + stream workers
 #   make up-mlops   -> + profile "mlops": postgres, mlflow, prefect-server, prefect-worker
 #   make up-all     -> + profile "monitoring": prometheus (:9090), grafana (:3000)
-# Later phases add profile: ui.
+#   make up-ui      -> + profile "ui": analyst UI (nginx :5180; /api proxied to the API)
 # Every service has a healthcheck and a memory limit; all images are multi-arch (amd64/arm64).
 # Host ports are overridable: FS_KAFKA_PORT, FS_REDIS_PORT (6380), FS_MLFLOW_PORT (5050; macOS AirPlay
 # holds 5000), FS_PG_PORT (5433), FS_PREFECT_PORT, FS_API_PORT, FS_CONSOLE_PORT, ...
@@ -37,6 +37,9 @@ x-app: &app
     FRAUDSHIELD_STREAMING__PARQUET_DIR: /data/stream
     FRAUDSHIELD_STREAMING__PARQUET_FLUSH_S: "5"
     MLFLOW_DISABLE_AGENT_HINT: "1"
+    # review cases + analyst labels: memory (core only) | postgres (make up-mlops / up-all set it)
+    FRAUDSHIELD_CASES__STORE: ${FS_CASE_STORE:-memory}
+    FRAUDSHIELD_CASES__DSN: postgresql://fraudshield:${FS_PG_PASSWORD:-fraudshield}@postgres:5432/fraudshield
 
 x-worker-health: &worker-health
   test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/metrics', timeout=2)"]
@@ -127,6 +130,11 @@ services:
     depends_on:
       redis: { condition: service_healthy }
       topics-init: { condition: service_completed_successfully }
+      # only when the mlops profile is up (FS_CASE_STORE=postgres); ignored otherwise
+      postgres: { condition: service_healthy, required: false }
+    volumes:
+      - ./artifacts:/app/artifacts:ro
+      - ./reports:/app/reports:ro  # latest drift report for the analyst UI
     ports:
       - "${FS_API_PORT:-8000}:8000"
     healthcheck:
@@ -346,6 +354,23 @@ services:
       timeout: 3s
       retries: 20
     mem_limit: 384m
+
+  # ---------------------------------------------------------------- ui profile
+  ui:
+    image: fraudshield-ui:dev
+    build: ui
+    profiles: [ui]
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    ports:
+      - "${FS_UI_PORT:-5180}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 64m
 
 volumes:
   redpanda-data:

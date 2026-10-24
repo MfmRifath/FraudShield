@@ -65,7 +65,7 @@ bench-docker: ## Same benchmark inside the Linux test container
 test-cov: ## Tests with coverage report
 	$(RUN) pytest -m "not integration" --cov --cov-report=term-missing $(PYTEST_ARGS)
 
-IT_MARKERS ?= integration and not mlops and not monitoring
+IT_MARKERS ?= integration and not mlops and not monitoring and not ui
 TEST_IMAGE_RUN = docker run --rm -v "$(CURDIR)":/app -v fraudshield-test-venv:/venv \
 	-v fraudshield-test-uvcache:/root/.cache/uv -e PYTHONDONTWRITEBYTECODE=1 -e MLFLOW_DISABLE_AGENT_HINT=1
 
@@ -75,18 +75,19 @@ test-integration: up ## Compose integration tests (test container on the compose
 		-e FRAUDSHIELD_STREAMING__BOOTSTRAP_SERVERS=redpanda:9092 \
 		-e FRAUDSHIELD_STREAMING__REDIS_URL=redis://redis:6379/0 \
 		-e FRAUDSHIELD_STREAMING__API_URL=http://api:8000 \
+		-e PREFECT_API_URL=http://prefect-server:4200/api \
 		-e FRAUDSHIELD_SERVING__DATASET=sparkov \
 		fraudshield-test:dev sh -c 'uv sync --frozen -q && uv run --frozen pytest -m "$(IT_MARKERS)" -p no:cacheprovider $(PYTEST_ARGS)'
 
 .PHONY: test-integration-mlops
 test-integration-mlops: ## Integration tests incl. the mlops profile (MLflow server, Prefect flow run)
 	$(MAKE) up-mlops
-	$(MAKE) test-integration IT_MARKERS="integration" PROFILES="--profile core --profile mlops"
+	$(MAKE) test-integration IT_MARKERS="integration and not monitoring and not ui" PROFILES="--profile core --profile mlops"
 
 .PHONY: test-integration-all
-test-integration-all: ## Integration tests for all profiles (core + mlops + monitoring)
+test-integration-all: ## Integration tests for all profiles (core + mlops + monitoring + ui)
 	$(MAKE) up-all
-	$(MAKE) test-integration IT_MARKERS="integration" PROFILES="--profile core --profile mlops --profile monitoring"
+	$(MAKE) test-integration IT_MARKERS="integration" PROFILES="$(ALL_PROFILES)"
 
 .PHONY: clean
 clean: ## Remove caches and build outputs (keeps data/)
@@ -138,7 +139,9 @@ docs: ## Render docs/model_card.md from reports/<ds>/metrics.json
 # ---------------------------------------------------------------- runtime
 COMPOSE ?= docker compose
 PROFILES ?= --profile core
-ALL_PROFILES = --profile core --profile mlops --profile monitoring
+ALL_PROFILES = --profile core --profile mlops --profile monitoring --profile ui
+# Review cases live in Postgres whenever the mlops profile (which runs it) is up.
+CASE_STORE ?= $(if $(findstring mlops,$(PROFILES)),postgres,memory)
 
 .PHONY: dev-bundle
 dev-bundle: ## Train dev champion/challenger bundles on the CC0 fixture -> artifacts/dev (in Docker)
@@ -146,17 +149,38 @@ dev-bundle: ## Train dev champion/challenger bundles on the CC0 fixture -> artif
 	$(TEST_IMAGE_RUN) fraudshield-test:dev sh -c 'uv sync --frozen -q && uv run --frozen python -m fraudshield.devtools dev-bundles'
 
 .PHONY: up
-up: ## docker compose up --wait (profile core; later phases add mlops/monitoring/ui)
+up: ## docker compose up --wait (profile core)
 	@test -f artifacts/dev/bundle/bundle.json || $(MAKE) dev-bundle
-	$(COMPOSE) $(PROFILES) up -d --build --wait
+	FS_CASE_STORE=$(CASE_STORE) $(COMPOSE) $(PROFILES) up -d --build --wait
 
 .PHONY: up-mlops
 up-mlops: ## up with profiles core + mlops (postgres, mlflow, prefect server + worker)
 	$(MAKE) up PROFILES="--profile core --profile mlops"
 
+.PHONY: up-ui
+up-ui: ## up with profiles core + mlops + ui (analyst UI on :5180, cases in Postgres)
+	$(MAKE) up PROFILES="--profile core --profile mlops --profile ui"
+
 .PHONY: up-all
-up-all: ## up with profiles core + mlops + monitoring (Prometheus :9090, Grafana :3000)
-	$(MAKE) up PROFILES="--profile core --profile mlops --profile monitoring"
+up-all: ## up with every profile: core + mlops + monitoring + ui
+	$(MAKE) up PROFILES="$(ALL_PROFILES)"
+
+# ---------------------------------------------------------------- analyst UI (ui/, Node 24)
+.PHONY: ui-install
+ui-install: ## npm ci for the analyst UI
+	cd ui && npm ci --no-audit --no-fund
+
+.PHONY: ui-dev
+ui-dev: ## Vite dev server on :5173, proxying /api to the API on :8000 (run `make up` first)
+	cd ui && npm run dev
+
+.PHONY: ui-test
+ui-test: ## UI typecheck + vitest
+	cd ui && npm run typecheck && npm test
+
+.PHONY: ui-build
+ui-build: ## Production build of the UI -> ui/dist
+	cd ui && npm run build
 
 .PHONY: dashboards
 dashboards: ## Regenerate infra/grafana/dashboards/*.json from scripts/build_dashboards.py
