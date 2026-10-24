@@ -116,5 +116,7 @@ class ModelBundle:
         """Serving path for one event: calibrated probability + top reasons."""
         x = build_row(features, self._variant(which).feature_names, self.spec.encoder)
         p = float(self._variant(which).calibrator.apply(self.raw_scores(x, which))[0])
+        if n_reasons <= 0:  # e.g. shadow scoring: skip the (costly) pred_contrib pass
+            return p, []
         reasons = self.reasons[which].top(self.contributions(x, which)[0], features, n_reasons)
         return p, reasons

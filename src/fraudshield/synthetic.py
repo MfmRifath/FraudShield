@@ -132,14 +132,9 @@ def build_synthetic_bundle(
     """
     from pathlib import Path
 
-    from fraudshield.model_bundle import BundleSpec, ModelBundle, VariantSpec
-    from fraudshield.model_bundle import Variant as BundleVariant
     from fraudshield.pipeline import feature_set_for
-    from fraudshield.reasons import ReasonMapper
-    from fraudshield.training.calibrate import fit_calibrator
+    from fraudshield.training.bundle_builder import train_bundle
     from fraudshield.training.costs import CostConfig
-    from fraudshield.training.matrix import CategoryEncoder, build_matrix, typical_values
-    from fraudshield.training.models import lgbm_params, train_lgbm
     from fraudshield.training.splits import assign_splits
 
     fs = feature_set_for(settings, "sparkov")
@@ -150,50 +145,19 @@ def build_synthetic_bundle(
         df = df.with_columns(
             label=pl.when(pl.Series(flip)).then(1 - pl.col("label")).otherwise(pl.col("label"))
         )
-    tr, va = df.filter(pl.col("split") == "train"), df.filter(pl.col("split") == "val")
-    enc = CategoryEncoder.fit(tr, fs.categorical, 5)
-    cfg = settings.training.lgbm.model_copy(
-        update={"num_leaves": num_leaves, "min_child_samples": 20}
-    )
-    params = lgbm_params(cfg, seed)
-    boosters: dict[BundleVariant, Any] = {}
-    cals: dict[BundleVariant, Any] = {}
-    variants: tuple[tuple[BundleVariant, list[str]], ...] = (
-        ("full", fs.names),
-        ("degraded", fs.request_only),
-    )
-    for variant, names in variants:
-        b = train_lgbm(
-            build_matrix(tr, names, enc),
-            tr["label"].to_numpy(),
-            names,
-            fs.categorical,
-            params,
-            rounds,
-        )
-        cals[variant] = fit_calibrator(
-            b.predict(build_matrix(va, names, enc)), va["label"].to_numpy()
-        )
-        boosters[variant] = b
-    typical = typical_values(tr, fs.names, fs.categorical)
-    spec = BundleSpec(
-        metadata={
+    return train_bundle(
+        fs,
+        df.filter(pl.col("split") == "train"),
+        df.filter(pl.col("split") == "val"),
+        CostConfig.load(settings.paths.costs),
+        {
             "dataset": "synthetic",
-            "feature_set_hash": fs.spec_hash(),
             "created_at": "synthetic",
             "model_version": f"synthetic-{rounds}x{num_leaves}",
         },
-        encoder=enc,
-        full=VariantSpec(
-            booster_file="full.txt", feature_names=tuple(fs.names), calibrator=cals["full"]
-        ),
-        degraded=VariantSpec(
-            booster_file="degraded.txt",
-            feature_names=tuple(fs.request_only),
-            calibrator=cals["degraded"],
-        ),
-        costs=CostConfig.load(settings.paths.costs),
-        typical=typical,
-        reason_map=ReasonMapper.from_feature_set(fs, fs.names, typical).mapping(),
+        Path(out_dir),
+        lgbm=settings.training.lgbm,
+        rounds=rounds,
+        num_leaves=num_leaves,
+        seed=seed,
     )
-    return ModelBundle(spec, boosters).save(Path(out_dir))
