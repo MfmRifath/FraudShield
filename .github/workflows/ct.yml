@@ -1,0 +1,47 @@
+name: ct
+
+# Continuous training: weekly (Mon 03:30 UTC) and on demand.
+# * retrain: asks the deployed Prefect server to run `retrain-and-promote/weekly` (train ->
+#   gate -> promote). Needs the repository secret PREFECT_API_URL (and PREFECT_API_AUTH_STRING if
+#   the server uses basic auth); skipped otherwise.
+# * pipeline-check: runs the same loop on synthetic data (`make mlops-demo`) so a broken
+#   training pipeline is caught even where no server is configured.
+on:
+  schedule:
+    - cron: "30 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.12.23"
+
+jobs:
+  retrain:
+    name: retrain on the deployed stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      PREFECT_API_URL: ${{ secrets.PREFECT_API_URL }}
+      PREFECT_API_AUTH_STRING: ${{ secrets.PREFECT_API_AUTH_STRING }}
+    steps:
+      - name: Skip without a Prefect server
+        if: env.PREFECT_API_URL == ''
+        run: echo "::notice::PREFECT_API_URL is not set; skipping the remote retrain."
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        if: env.PREFECT_API_URL != ''
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Run retrain-and-promote and wait for it
+        if: env.PREFECT_API_URL != ''
+        run: uvx --python 3.12 prefect==3.8.8 deployment run retrain-and-promote/weekly --watch --watch-timeout 7000
+
+  pipeline-check:
+    name: training pipeline check (synthetic)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: retrain -> @challenger -> gate + shadow -> promote -> rollback
+        run: make mlops-demo

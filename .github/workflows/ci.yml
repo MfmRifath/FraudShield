@@ -17,16 +17,17 @@ env:
   UV_VERSION: "0.12.23"
   HYPOTHESIS_PROFILE: ci
 
+# Actions are pinned by commit SHA (tag in the comment); Dependabot proposes updates.
 jobs:
   lint-test:
     name: lint + tests
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -42,7 +43,7 @@ jobs:
 
       - name: Upload test report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: pytest-report
           path: pytest-report.xml
@@ -56,8 +57,8 @@ jobs:
       run:
         working-directory: ui
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version-file: ui/.nvmrc
           cache: npm
@@ -72,24 +73,49 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - name: Build API image (linux/amd64; multi-arch push happens in cd.yml, Phase 8)
-        uses: docker/build-push-action@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+      - name: Build API image (linux/amd64; multi-arch images are built by cd.yml)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           push: false
           load: true
           tags: fraudshield-api:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
       - name: Container starts and reports healthy (no model mounted -> not ready)
         run: |
           docker run -d --name api -p 8000:8000 fraudshield-api:ci
-          for i in $(seq 1 30); do curl -fsS localhost:8000/health && break; sleep 1; done
+          for _ in $(seq 1 30); do curl -fsS localhost:8000/health && break; sleep 1; done
           curl -fsS localhost:8000/health
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8000/ready)" = "503"
           docker rm -f api
+
+  demo:
+    name: demo container (one command, < 1 GiB)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Start the demo at 50 tx/s
+        run: FS_DEMO_RATE=50 docker compose -f compose.demo.yml up -d --build --wait
+      - name: UI + API up, memory under 1 GiB for 2 minutes
+        run: uv run --frozen --no-default-groups python scripts/demo_check.py --minutes 2 --out demo-check
+      - name: Demo report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: demo-check
+          path: demo-check/
+          if-no-files-found: ignore
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f compose.demo.yml logs --no-color --tail=200
 
   integration:
     name: compose integration (core profile)
@@ -97,7 +123,7 @@ jobs:
     timeout-minutes: 45
     needs: [lint-test]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Start the core stack and run integration tests
         # dev bundles (fixture-trained), compose up --wait, pytest -m integration in the test
         # container on the compose network

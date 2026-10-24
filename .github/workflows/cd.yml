@@ -1,0 +1,95 @@
+name: cd
+
+# On main: build multi-arch (linux/amd64 + linux/arm64) images and push them to GHCR, then
+# optionally deploy to a VM over SSH (docs/deploy/arm-vm.md). Deploying is skipped unless the
+# repository variable DEPLOY_HOST is set. Variables: DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH,
+# DEPLOY_COMPOSE_ARGS; secrets: DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS (ssh-keyscan output).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    name: image ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: fraudshield-api, context: ., target: runtime }
+          - { name: fraudshield-trainer, context: ., target: trainer }
+          - { name: fraudshield-demo, context: ., target: demo }
+          - { name: fraudshield-ui, context: ui, target: "" }
+          - { name: fraudshield-mlflow, context: infra/mlflow, target: "" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+          tags: |
+            type=sha,format=long,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  deploy:
+    name: deploy (ssh + docker compose)
+    needs: [images]
+    if: vars.DEPLOY_HOST != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Pull the new images and restart the stack on the VM
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          COMPOSE_ARGS: ${{ vars.DEPLOY_COMPOSE_ARGS }}
+          PREFIX: ghcr.io/${{ github.repository_owner }}/
+          TAG: ${{ github.sha }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts  # pinned host key: no blind trust
+          ssh -i ~/.ssh/id_deploy "${DEPLOY_USER:-deploy}@$HOST" \
+            "DEPLOY_PATH='${DEPLOY_PATH:-/opt/fraudshield}' TAG='$TAG' FS_IMAGE_PREFIX='$PREFIX' ARGS='${COMPOSE_ARGS:--f compose.yml -f infra/deploy/compose.vm.yml --profile core --profile mlops --profile ui}' bash -s" <<'EOS'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          git fetch --quiet origin main && git checkout --quiet "$TAG"
+          export FS_IMAGE_PREFIX FS_TAG="$TAG"
+          # shellcheck disable=SC2086  # ARGS is a list of -f / --profile flags
+          docker compose $ARGS pull --quiet
+          # shellcheck disable=SC2086
+          docker compose $ARGS up -d --wait --no-build
+          EOS
