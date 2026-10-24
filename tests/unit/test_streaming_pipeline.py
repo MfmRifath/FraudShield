@@ -48,9 +48,12 @@ class ProcessorSink:
 def test_api_processor_redis_pipeline_matches_offline(tmp_path: Path) -> None:
     s0 = serving_settings(tmp_path)
     bundle = make_bundle(s0, tmp_path / "bundle")
+    # parity, not latency: a loaded CI box can exceed the 10 ms production feature budget on
+    # fakeredis and (correctly) degrade a request, which is not what this test is about
     s = serving_settings(
-        tmp_path, bundle_dir=bundle, update_store_inline=False, challenger_bundle_dir=None
-    )
+        tmp_path, bundle_dir=bundle, update_store_inline=False, challenger_bundle_dir=None,
+        feature_timeout_ms=2000.0,
+    )  # fmt: skip
     fs = feature_set_for(s, "sparkov")
     spec = OnlineSpec.from_feature_set(fs)
     server = fakeredis.FakeServer()
