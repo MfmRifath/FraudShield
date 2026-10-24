@@ -14,3 +14,4 @@ Status: Proposed | Accepted | Superseded by ADR-NNNN.
 | [0007](0007-phase1-dependency-versions.md) | Phase 1 dependency choices (Polars 2, DuckDB 2, no pandas yet) | Accepted |
 | [0008](0008-modeling-policy-and-packaging.md) | Modeling, decision policy and model packaging | Accepted |
 | [0009](0009-serving-design.md) | Serving design (online features, fallbacks, packaging) | Accepted |
+| [0010](0010-streaming-design.md) | Streaming topology, Redis feature store and dependency caps | Accepted |

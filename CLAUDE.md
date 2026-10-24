@@ -4,7 +4,7 @@
 
 ## Current phase
 
-**Phase 3: Serving: complete, awaiting review.** Next: Phase 4 (Streaming), only after the user types "continue". Real-data DoD items are deferred (rule 9).
+**Phase 4: Streaming: complete, awaiting review.** Next: Phase 5 (MLOps loop), only after the user types "continue". Real-data DoD items are deferred (rule 9).
 IEEE-CIS raw data is **not downloaded yet** (needs the user's Kaggle token + accepted competition rules). Sparkov was downloaded and built in Phase 1.
 
 ## Goal
@@ -57,6 +57,11 @@ src/fraudshield/training/      # splits, matrix (CategoryEncoder), models, calib
 src/fraudshield/features/online.py, store.py  # OnlineSpec + compute_online (pure); FeatureStore protocol, InMemoryFeatureStore, replay()
 src/fraudshield/serving/       # app (FastAPI factory), scorer (pipeline + fallbacks), models (slots, canary, reload), breaker, events (publisher, SSE), metrics, schemas
 src/fraudshield/cases/store.py # Case model, CaseStore protocol, InMemoryCaseStore (Postgres in Phase 7)
+src/fraudshield/features/redis_store.py  # RedisFeatureStore (async, API) + SyncRedisFeatureWriter (processor), shared _RedisOps keys
+src/fraudshield/streaming/     # replayer, gateway, processor, label_emitter, parquet_sink, shadow, common (Quix app, lag metrics); `python -m fraudshield.streaming <worker>`
+src/fraudshield/devtools.py    # `dev-bundles`: fixture-trained champion/challenger -> artifacts/dev (wiring only)
+src/fraudshield/training/bundle_builder.py  # train_bundle(): bundle without MLflow (synthetic/dev)
+compose.yml                    # profile core: redpanda, topics-init, console, redis, api, processor, gateway, label-emitter, parquet-sink, shadow
 src/fraudshield/synthetic.py   # planted-signal synthetic data + build_synthetic_bundle (tests, benchmark; never a reported model)
 Dockerfile                     # API image (core deps only, non-root, libgomp1); run: uvicorn --factory fraudshield.serving.app:create_app
 configs/costs.yaml, configs/rules.yaml, configs/tuned/<ds>.json (written by `make tune`)
@@ -94,6 +99,10 @@ docs/adr/  docs/img/
 - **Serving never 5xx** for internal faults: fallbacks are feature store -> degraded booster -> rules-only; unknown error -> `review` + `fallback=internal_error`. Validation errors are 422.
 - **Benchmarks** must report the model actually measured (trees, mean leaves/tree); synthetic easy data grows stumps, so `build_synthetic_bundle(label_noise=0.3)` for latency work.
 - **Avoid `# fmt: skip` inside expressions** (ruff RUF028); use it only on statements.
+- **Kafka keys = uid on every topic** (per-card ordering). `transactions.raw` = exact /score body (never labels); truth goes to `transactions.truth`.
+- **Stream workers**: logic in plain classes (unit-tested without Kafka); `run(settings)` only wires Quix. Quix state_dir = /tmp (image is non-root).
+- **Integration tests** (`-m integration`) run in the test container on the compose network (`make test-integration`); use `--namespace` isolation, never flush shared Redis.
+- **Hypothesis value pools overlap across columns** on purpose (catches stores mixing per-column state).
 
 ## Commands
 
@@ -110,6 +119,10 @@ make fixture           # regenerate the Sparkov test fixture (deterministic)
 make eda DATASET=sparkov        # execute notebooks/01_eda.ipynb in place
 make test-docker       # lint + tests in Linux (no local libomp needed)
 make bench-docker      # in-process /score latency -> reports/benchmarks/serving_inprocess.md (synthetic bundle)
+make dev-bundle        # fixture-trained dev champion/challenger -> artifacts/dev (in Docker)
+make up / make down / make down-v / make ps   # compose profile core (host ports: API 8000, Kafka 19092, Redis 6380, Console 8080)
+make replay RATE=50 ARGS="--max-events 300 --namespace demo"   # SOURCE=fixture (default) | canonical
+make test-integration  # up + end-to-end tests on the compose network
 docker build -t fraudshield-api .   # API image; mount artifacts/ and set FRAUDSHIELD_CONFIG
 make tune DATASET=..   # Optuna -> configs/tuned/<ds>.json      (real data: deferred)
 make train DATASET=..  # train + evaluate + MLflow + @challenger (real data: deferred)
@@ -123,8 +136,8 @@ uv run pre-commit run --all-files
 |---|---|---|
 | Python | 3.12.15 (`>=3.12,<3.13`) | |
 | uv | 0.12.23 (`required-version >=0.12.23,<0.13`) | CI pins `UV_VERSION` |
-| pydantic | 2.14.1 | |
-| pydantic-settings | 2.16.1 | uses the built-in `YamlConfigSettingsSource` |
+| pydantic | 2.13.5 | capped <2.14 by quixstreams 3.28.1 |
+| pydantic-settings | 2.15.0 | capped <2.16 by quixstreams; built-in `YamlConfigSettingsSource` |
 | pyyaml | 6.0.3 | |
 | ruff | 0.17.2 | 0.17 changed default rules and the default target (we set both explicitly) |
 | mypy | 2.4.0 | 2.x: `local_partial_types` + `strict_bytes` on by default; native parser default |
@@ -149,6 +162,11 @@ uv run pre-commit run --all-files
 | orjson / prometheus-client | 3.13.0 / 0.26.0 | |
 | mlflow-skinny | 3.17.2 | serving: registry alias lookup + artifact download |
 | httpx2 (dev) | 2.16.0 | Starlette 1.9 TestClient backend (replaces httpx) |
+| quixstreams | 3.28.1 | `apply/update(metadata=True)` callbacks get (value, key, ts_ms, headers) |
+| confluent-kafka | 2.12.2 | capped <2.13 by quixstreams; API KafkaSink + replayer |
+| redis / fakeredis (dev) | 8.1.0 / 2.40.0 | `redis.asyncio` in the API, sync client in the processor |
+| requests | 2.34.2 | gateway HTTP client |
+| images | redpanda v26.2.2, console v3.13.1, redis 8.10.2-alpine | all arm64 + amd64 |
 | kagglehub | 1.0.3 | `data` group |
 | matplotlib / jupyterlab / ipykernel | 3.11.2 / 4.6.4 / 7.4.0 | `notebooks` group |
 | GH Actions | checkout@v7, setup-uv@v10, upload-artifact@v7 | SHA pinning in Phase 8 |
@@ -166,3 +184,4 @@ Stack gotchas to respect when these are added later: Evidently 0.7+ new API (`fr
 - [ADR-0007](docs/adr/0007-phase1-dependency-versions.md): Polars 2 / DuckDB 2 adopted with mitigations; pandas deferred
 - [ADR-0008](docs/adr/0008-modeling-policy-and-packaging.md): data use per window, baselines, calibration, cost policy + capacity, metric definitions, no-pickle bundle, reason codes
 - [ADR-0009](docs/adr/0009-serving-design.md): online executor/store split, pipeline + fallbacks, capacity online, model slots/canary/reload, events, dependency split, benchmark method
+- [ADR-0010](docs/adr/0010-streaming-design.md): topics/keys, gateway, truth topic + label emitter, processor consistency, Redis layout, parquet/shadow, namespace isolation, Quix dependency caps

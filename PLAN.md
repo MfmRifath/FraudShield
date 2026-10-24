@@ -70,15 +70,16 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 
 ## Phase 4: Streaming
 
-- [ ] `compose.yml` core profile (redpanda `--smp 1 --memory 1G --overprovisioned`, console, redis, api, processor) with healthchecks + memory limits
-- [ ] replayer (keyed by uid, speed factor, time window)
-- [ ] Quix Streams processor -> Redis aggregates; `RedisFeatureStore`
-- [ ] parquet sink (hourly), label emitter (delay distribution), shadow scorer (`@challenger` -> `shadow.scores`)
-- [x] Parity test: 2,000-event fixture, online vs offline, max abs diff < 1e-6 per feature (done in Phase 3 with InMemoryFeatureStore; re-run against RedisFeatureStore)
-- [ ] Consumer-lag metric
-- [ ] Integration test: 100 streamed events end to end
+- [x] `compose.yml` core profile (redpanda `--smp=1 --memory=1G --overprovisioned`, topics-init, console, redis, api, processor + gateway, label-emitter, parquet-sink, shadow), healthchecks + memory limits on every service; all healthy locally (~960 MiB total)
+- [x] replayer (keyed by uid, speed factor, rate limit, time window, namespace isolation; `make replay`)
+- [x] Quix Streams processor -> Redis; `RedisFeatureStore` (API reads) + `SyncRedisFeatureWriter` (processor writes)
+- [x] gateway (transactions.raw -> POST /score), parquet sink (hourly, timer flush), label emitter (event-time release via the offline delay function), shadow scorer (`@challenger` -> `shadow.scores`)
+- [x] Parity test: 2,000-event fixture, online vs offline, max abs diff < 1e-6 per feature, against InMemory **and** Redis stores; in-process API -> processor pipeline parity; end-to-end parity on the live stack
+- [x] Consumer-lag metric (`consumer_lag_seconds{worker,topic}` on every worker)
+- [x] Integration test: 200 streamed events end to end (scored, Redis updated, shadow-scored, served features == offline, lag < 30 s); CI `integration` job
 
 **DoD:** `make up && make replay` shows events flowing; parity test passes; consumer lag metric exposed.
+**Status:** met with fixture data (no dataset download): 300 replayed events flowed through every worker; `make test-integration` 5/5 passed.
 
 ## Phase 5: MLOps loop
 
@@ -136,6 +137,7 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 - [ ] `make tune` + `make train` for ieee_cis (and sparkov for the demo); commit `configs/tuned/*.json`, `reports/<ds>/*.md|json|png`
 - [ ] `make docs DATASET=ieee_cis` -> `docs/model_card.md` (Phase 2 DoD)
 - [ ] `python scripts/bench_serving.py --bundle artifacts/ieee_cis/bundle` (real-model latency; Phase 3)
+- [ ] `make up` with the real bundle (`FS_BUNDLE_SET=ieee_cis` / MLflow alias) + `make replay SOURCE=canonical DATASET=ieee_cis ARGS="--start ... --end ..."` (Phase 4 on real data; watch feature_timeout fallbacks for heavy email domains)
 
 ---
 
@@ -147,3 +149,4 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 | 2026-10-23 | 1 | Data & PIT features. Canonical schema + pandera; IEEE-CIS (synthetic-row tests) and Sparkov adapters; deterministic label delay; 48-feature declarative library with Polars/DuckDB offline executor; splits + rolling-origin CV; manifests with logical content hashes. Sparkov: 1,852,394 rows built in ~16 s / 3.2 GB RSS; `make features-check` reproduces features sha256 `7b10a3c6…`. Tests: 83 passed (incl. hypothesis oracle/no-leakage, CI profile 74 s); mutation check confirmed tests catch an off-by-one window and a TE label leak. IEEE-CIS real data not yet downloaded (credentials). ADR-0004..0007. |
 | 2026-10-23 | 2 | Modeling, **code only** (user: no data downloads / real training until all phases are coded). Rules engine, cost policy with daily review capacity, isotonic/Platt calibration (JSON), category encoder, logistic + LightGBM full/degraded, Optuna rolling-origin tuning, evaluation suite + plots + cost sweep, grouped reason codes, no-pickle model bundle, MLflow pyfunc + registry alias @challenger, model card renderer, `train`/`tune`/`model-card` CLI. Tests: 117 passed in Linux container (`make test-docker`; CI profile 3m17s), incl. 10k-row synthetic training smoke test. Tests caught a numpy string-truncation bug ("approve"->"approv") in the capacity logic; fixed with a fixed-width decision dtype. pyarrow 26.0.0 -> 25.0.1 (mlflow cap). macOS needs `brew install libomp` for LightGBM. ADR-0008. |
 | 2026-10-24 | 3 | Serving. Online executor + InMemoryFeatureStore (parity < 1e-6 on fixture + generated frames; mutation-checked), FastAPI app (score, health/ready/metrics, native SSE, cases, admin reload, model info), scoring pipeline with 10 ms timeout + circuit breaker + degraded/rules-only fallbacks, canary, skew guard, non-blocking publisher, Dockerfile (1.22 GB, 118 MiB RSS idle with synthetic bundle), CI docker-build job. Deps split core vs `train` group; FastAPI 0.162 / Starlette 1.9 (TestClient -> httpx2). Benchmark caught its own flaw (synthetic stumps: 2.6 leaves/tree) -> label noise -> 63 leaves/tree: service p95 4.53 ms, HTTP 7.66 ms, degraded 2.49 ms (committed report). SHAP summary plot added (Phase 2 leftover). Tests: 143 passed (Linux container; CI profile 3m37s). ADR-0009. |
+| 2026-10-24 | 4 | Streaming. Compose core profile (10 services, healthchecks + mem limits, ~960 MiB), replayer, gateway, Quix processor, label emitter, hourly parquet sink, shadow scorer, RedisFeatureStore, Kafka sink in the API, consumer-lag metrics, dev bundles from the CC0 fixture. Parity < 1e-6 vs offline on InMemory + Redis stores, in-process pipeline and live stack. Mutation checks found a test gap (first-seen state mixing across columns undetected) -> overlapping Hypothesis value pools. Live run found a parquet idle-flush bug -> background timer + regression test. Quix caps forced pydantic 2.13.5, pydantic-settings 2.15.0, confluent-kafka 2.12.2. Host Redis port 6380 (6379 in use). Tests: 161 unit/parity/smoke + 5 integration passed. ADR-0010. |
