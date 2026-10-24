@@ -9,6 +9,7 @@ authors = [{ name = "FraudShield maintainers" }]
 # Exact pins only (ADR-0002). Core = data pipeline + serving runtime (what the API image installs);
 # training-only libraries live in the `train` dependency group (ADR-0009).
 dependencies = [
+    "confluent-kafka==2.12.2",
     "duckdb==2.0.0",
     "fastapi==0.162.0",
     "httptools==0.9.0",
@@ -20,9 +21,12 @@ dependencies = [
     "polars==2.0.0",
     "prometheus-client==0.26.0",
     "pyarrow==25.0.1",
-    "pydantic==2.14.1",
-    "pydantic-settings==2.16.1",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
     "pyyaml==6.0.3",
+    "quixstreams==3.28.1",
+    "redis==8.1.0",
+    "requests==2.34.2",
     "uvicorn==0.54.0",
     "uvloop==0.23.0",
 ]
@@ -43,6 +47,7 @@ data = [
     "kagglehub==1.0.3",
 ]
 dev = [
+    "fakeredis==2.40.0",
     "httpx2==2.16.0",
     "hypothesis==6.170.8",
     "mypy==2.4.0",
@@ -118,7 +123,7 @@ warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
 [[tool.mypy.overrides]]
-module = ["kagglehub", "kagglehub.*", "lightgbm", "lightgbm.*", "sklearn", "sklearn.*", "shap", "shap.*"]
+module = ["kagglehub", "kagglehub.*", "confluent_kafka", "confluent_kafka.*", "lightgbm", "lightgbm.*", "sklearn", "sklearn.*", "shap", "shap.*"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]
