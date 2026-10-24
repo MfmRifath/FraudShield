@@ -83,13 +83,14 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 
 ## Phase 5: MLOps loop
 
-- [ ] `mlops` compose profile (postgres, mlflow, prefect-server, prefect-worker)
-- [ ] Flows: backfill_features, build_training_set (chargeback wins conflicts; PIT by label_time), retrain, promote
-- [ ] Promotion gate (PR-AUC >= champion - 0.005, net savings >= champion, p95 predict <= 5 ms, parity passes)
-- [ ] Rollback command
-- [ ] Canary toggle
+- [x] `mlops` compose profile (postgres 18, mlflow server w/ Postgres + proxied artifacts, prefect-server, prefect-worker on the `trainer` image), healthchecks + memory limits
+- [x] Flows: backfill_features, build_training_set (chargeback wins conflicts; PIT by label_time), retrain, promote, retrain-and-promote (weekly cron), mlops-demo
+- [x] Promotion gate (PR-AUC >= champion - 0.005, net savings >= champion, single-row p95 <= 5 ms, parity + feature-set-hash check) + shadow comparison; reports in `reports/<ds>/promotions/`
+- [x] Rollback command (`make rollback`, alias history tag) demonstrated in tests and in `make mlops-demo`
+- [x] Canary toggle (`POST /admin/canary`, `fraudshield canary`)
 
 **DoD:** one command runs retrain -> challenger -> shadow comparison -> promote; rollback demonstrated in a test or script.
+**Status:** met on synthetic data: `make mlops-demo` (SQLite) and the same flow as a Prefect deployment run on the stack (`make test-integration-mlops`: 8/8). With the current seed the gate blocks v2 on net savings; the demo then records a forced promotion and rolls back.
 
 ## Phase 6: Monitoring
 
@@ -136,6 +137,7 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 - [ ] `make eda DATASET=ieee_cis` (Phase 1 EDA on the primary dataset)
 - [ ] `make tune` + `make train` for ieee_cis (and sparkov for the demo); commit `configs/tuned/*.json`, `reports/<ds>/*.md|json|png`
 - [ ] `make docs DATASET=ieee_cis` -> `docs/model_card.md` (Phase 2 DoD)
+- [ ] `make up-mlops` + `make retrain promote DATASET=ieee_cis` against the MLflow server, then `FS_MODEL_SOURCE=mlflow make up-mlops` to serve `@champion` (Phase 5 on real data)
 - [ ] `python scripts/bench_serving.py --bundle artifacts/ieee_cis/bundle` (real-model latency; Phase 3)
 - [ ] `make up` with the real bundle (`FS_BUNDLE_SET=ieee_cis` / MLflow alias) + `make replay SOURCE=canonical DATASET=ieee_cis ARGS="--start ... --end ..."` (Phase 4 on real data; watch feature_timeout fallbacks for heavy email domains)
 
@@ -150,3 +152,4 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 | 2026-10-23 | 2 | Modeling, **code only** (user: no data downloads / real training until all phases are coded). Rules engine, cost policy with daily review capacity, isotonic/Platt calibration (JSON), category encoder, logistic + LightGBM full/degraded, Optuna rolling-origin tuning, evaluation suite + plots + cost sweep, grouped reason codes, no-pickle model bundle, MLflow pyfunc + registry alias @challenger, model card renderer, `train`/`tune`/`model-card` CLI. Tests: 117 passed in Linux container (`make test-docker`; CI profile 3m17s), incl. 10k-row synthetic training smoke test. Tests caught a numpy string-truncation bug ("approve"->"approv") in the capacity logic; fixed with a fixed-width decision dtype. pyarrow 26.0.0 -> 25.0.1 (mlflow cap). macOS needs `brew install libomp` for LightGBM. ADR-0008. |
 | 2026-10-24 | 3 | Serving. Online executor + InMemoryFeatureStore (parity < 1e-6 on fixture + generated frames; mutation-checked), FastAPI app (score, health/ready/metrics, native SSE, cases, admin reload, model info), scoring pipeline with 10 ms timeout + circuit breaker + degraded/rules-only fallbacks, canary, skew guard, non-blocking publisher, Dockerfile (1.22 GB, 118 MiB RSS idle with synthetic bundle), CI docker-build job. Deps split core vs `train` group; FastAPI 0.162 / Starlette 1.9 (TestClient -> httpx2). Benchmark caught its own flaw (synthetic stumps: 2.6 leaves/tree) -> label noise -> 63 leaves/tree: service p95 4.53 ms, HTTP 7.66 ms, degraded 2.49 ms (committed report). SHAP summary plot added (Phase 2 leftover). Tests: 143 passed (Linux container; CI profile 3m37s). ADR-0009. |
 | 2026-10-24 | 4 | Streaming. Compose core profile (10 services, healthchecks + mem limits, ~960 MiB), replayer, gateway, Quix processor, label emitter, hourly parquet sink, shadow scorer, RedisFeatureStore, Kafka sink in the API, consumer-lag metrics, dev bundles from the CC0 fixture. Parity < 1e-6 vs offline on InMemory + Redis stores, in-process pipeline and live stack. Mutation checks found a test gap (first-seen state mixing across columns undetected) -> overlapping Hypothesis value pools. Live run found a parquet idle-flush bug -> background timer + regression test. Quix caps forced pydantic 2.13.5, pydantic-settings 2.15.0, confluent-kafka 2.12.2. Host Redis port 6380 (6379 in use). Tests: 161 unit/parity/smoke + 5 integration passed. ADR-0010. |
+| 2026-10-24 | 5 | MLOps loop. PIT training set (chargeback ∪ analyst, chargeback wins), registry alias history + rollback, 4-check promotion gate + shadow comparison, retrain/promote CLI + Prefect 3.8.8 flows (served by the worker; weekly cron), runtime canary endpoint, mlops compose profile (Postgres 18, MLflow server, Prefect server/worker). One-command `make mlops-demo` (synthetic): the gate genuinely blocks v2 on net savings -> recorded forced promotion -> rollback. Found + fixed: registry bundle path assumption (MLflow stores artifacts under the dir name), MLflow global-URI dependence, CLI crash for dataset-less commands, API cold-start degrading the first request, MLflow server ~1 GB from GenAI job consumers (-> 430 MiB). FastAPI pinned 0.150.0 (Prefect 3.8 server breaks on >= 0.155). Tests: 173 unit/parity/smoke + 8 integration (core + mlops). ADR-0011. |

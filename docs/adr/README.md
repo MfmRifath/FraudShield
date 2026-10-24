@@ -15,3 +15,4 @@ Status: Proposed | Accepted | Superseded by ADR-NNNN.
 | [0008](0008-modeling-policy-and-packaging.md) | Modeling, decision policy and model packaging | Accepted |
 | [0009](0009-serving-design.md) | Serving design (online features, fallbacks, packaging) | Accepted |
 | [0010](0010-streaming-design.md) | Streaming topology, Redis feature store and dependency caps | Accepted |
+| [0011](0011-mlops-loop.md) | MLOps loop: training set, registry history, promotion gate, Prefect | Accepted |
