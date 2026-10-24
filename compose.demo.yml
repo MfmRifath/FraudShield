@@ -1,0 +1,23 @@
+# Single-container demo: `make demo` -> http://localhost:8088 (UI) and /api (the scoring API).
+# FastAPI + an in-process replayer of the Sparkov window (the CC0 fixture until the real data run)
+# + in-memory feature and case stores + the built UI. No Kafka, Redis or Postgres; < 1 GB RAM.
+name: fraudshield-demo
+
+services:
+  demo:
+    image: ${FS_IMAGE_PREFIX:-}fraudshield-demo:${FS_TAG:-dev}
+    build:
+      context: .
+      target: demo
+    restart: unless-stopped
+    environment:
+      FRAUDSHIELD_DEMO__RATE: ${FS_DEMO_RATE:-5}  # replayed transactions per second
+    ports:
+      - "${FS_DEMO_PORT:-8088}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    mem_limit: 1g

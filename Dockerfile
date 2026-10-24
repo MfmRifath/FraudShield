@@ -41,8 +41,8 @@ ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 HOME=/home/app \
 USER app
 CMD ["python", "-m", "fraudshield.flows", "serve"]
 
-# ---------------------------------------------------------------- api (default target: keep last)
-FROM python:3.12.15-slim-trixie AS runtime
+# ---------------------------------------------------------------- api image (runtime = last stage)
+FROM python:3.12.15-slim-trixie AS runtime-base
 # libgomp1: OpenMP runtime required by LightGBM
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 \
@@ -63,3 +63,44 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
 CMD ["uvicorn", "--factory", "fraudshield.serving.app:create_app", "--host", "0.0.0.0", "--port", "8000", \
      "--loop", "uvloop", "--http", "httptools", "--workers", "1", "--no-access-log"]
+
+# ---------------------------------------------------------------- demo (single container)
+# docker build --target demo -t fraudshield-demo .   (or: make demo)
+# API + in-process replayer + in-memory feature/case stores + the built UI, < 1 GB RAM.
+FROM node:24.21.0-alpine AS ui-build
+WORKDIR /ui
+COPY ui/package.json ui/package-lock.json ui/.npmrc ./
+RUN npm ci --no-audit --no-fund
+COPY ui/tsconfig.json ui/vite.config.ts ui/index.html ./
+COPY ui/src ./src
+RUN npm run build
+
+# dev bundles trained on the committed CC0 fixture: the demo's model until the real training run
+FROM build-trainer AS demo-bundle
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY configs ./configs
+COPY tests/fixtures ./tests/fixtures
+RUN /app/.venv/bin/python -m fraudshield.devtools dev-bundles --out /bundles
+
+FROM runtime-base AS demo
+COPY --from=ui-build --chown=app:app /ui/dist /app/ui/dist
+COPY --from=demo-bundle --chown=app:app /bundles /app/artifacts/demo
+COPY --chown=app:app tests/fixtures/sparkov_sample.csv /app/tests/fixtures/sparkov_sample.csv
+ENV PORT=8000 \
+    FRAUDSHIELD_DATASET=sparkov \
+    FRAUDSHIELD_SERVING__DATASET=sparkov \
+    FRAUDSHIELD_SERVING__BUNDLE_DIR=/app/artifacts/demo/bundle \
+    FRAUDSHIELD_SERVING__CHALLENGER_BUNDLE_DIR=/app/artifacts/demo/challenger \
+    FRAUDSHIELD_SERVING__FEATURE_STORE=memory \
+    FRAUDSHIELD_SERVING__PUBLISHER=none \
+    FRAUDSHIELD_SERVING__UPDATE_STORE_INLINE=true \
+    FRAUDSHIELD_CASES__STORE=memory \
+    FRAUDSHIELD_DEMO__UI_DIR=/app/ui/dist
+# PORT: free hosts (Render, Fly.io, Cloud Run, ...) tell the container which port to bind
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
+    CMD ["sh", "-c", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT}/health', timeout=2)\""]
+CMD ["sh", "-c", "exec uvicorn --factory fraudshield.demo:create_demo_app --host 0.0.0.0 --port ${PORT} --loop uvloop --http httptools --no-access-log"]
+
+# ---------------------------------------------------------------- api (default target: keep last)
+FROM runtime-base AS runtime
