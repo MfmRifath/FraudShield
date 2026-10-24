@@ -4,7 +4,8 @@ Interprets the same specs as ``features.offline`` with identical semantics (see 
 ``features.definitions`` docstring). The work is split in two:
 
 * ``OnlineSpec``: derived from a ``FeatureSet``, it says what per-entity state a store must keep
-  (history fields + retention per entity, seen-sets, last-event times, target-encoding columns).
+  (history fields + retention per entity, distinct-value indexes, seen-sets, last-event times,
+  target-encoding columns).
 * ``compute_online(row, state, ...)``: a pure function from the current canonical row plus the
   ``EntityState`` read from the store (events strictly *before* the current one) to features.
 
@@ -32,6 +33,7 @@ from fraudshield.features.definitions import (
 
 US_PER_DAY: Final = 86_400 * 1_000_000
 Row = Mapping[str, Any]
+DistinctPair = tuple[str, str]  # (entity column, value column)
 
 
 def epoch_us(t: datetime) -> int:
@@ -60,6 +62,9 @@ class OnlineSpec:
 
     history_fields: dict[str, tuple[str, ...]]  # entity column -> value columns stored per event
     retention_us: dict[str, int]  # entity column -> longest window that reads its history
+    # distinct-count index: (entity, value) -> windows (µs). Stores keep value -> last time seen
+    # per entity key, so "distinct values in (t - w, t)" is a range count (no event lists).
+    distinct: dict[DistinctPair, tuple[int, ...]]
     first_seen: tuple[tuple[str, str], ...]  # (entity, value) pairs needing a seen-set
     last_time: tuple[str, ...]  # entities needing the last event time
     te_columns: tuple[str, ...]
@@ -68,16 +73,19 @@ class OnlineSpec:
     def from_feature_set(cls, fs: FeatureSet) -> OnlineSpec:
         fields_: dict[str, set[str]] = {}
         retention: dict[str, int] = {}
+        distinct: dict[DistinctPair, set[int]] = {}
         for f in fs.features:
-            if isinstance(f, WindowAgg | DistinctCount):
+            if isinstance(f, WindowAgg):
                 needed = fields_.setdefault(f.entity, set())
-                value = f.value
-                if value is not None:
-                    needed.add(value)
+                if f.value is not None:
+                    needed.add(f.value)
                 retention[f.entity] = max(retention.get(f.entity, 0), _window_us(f.window))
+            elif isinstance(f, DistinctCount):
+                distinct.setdefault((f.entity, f.value), set()).add(_window_us(f.window))
         return cls(
             history_fields={e: tuple(sorted(v)) for e, v in sorted(fields_.items())},
             retention_us=retention,
+            distinct={p: tuple(sorted(w)) for p, w in sorted(distinct.items())},
             first_seen=tuple(sorted({(f.entity, f.value) for f in fs.of_type(FirstSeen)})),
             last_time=tuple(sorted({f.entity for f in fs.of_type(TimeSinceLast)})),
             te_columns=tuple(sorted({f.column for f in fs.of_type(TargetEncoding)})),
@@ -95,6 +103,10 @@ class EntityState:
     """What a store returns for one event (all of it from events strictly before that event)."""
 
     history: dict[str, list[HistoryEvent]] = field(default_factory=dict)
+    # (entity, value, window µs) -> distinct values seen for the row's entity key in (t - w, t)
+    distinct: dict[tuple[str, str, int], int] = field(default_factory=dict)
+    # (entity, value) -> when the row's own value was last seen for its entity key (or None)
+    distinct_last: dict[DistinctPair, int | None] = field(default_factory=dict)
     last_t_us: dict[str, int | None] = field(default_factory=dict)
     seen: dict[tuple[str, str], bool] = field(default_factory=dict)
     te: dict[str, tuple[float, float]] = field(default_factory=dict)  # column -> (n, pos)
@@ -118,23 +130,29 @@ def compute_online(row: Row, state: EntityState, fs: FeatureSet) -> dict[str, An
     for f in fs.features:
         if isinstance(f, RequestFeature):
             out[f.name] = f.scalar(row)
-        elif isinstance(f, WindowAgg | DistinctCount):
+        elif isinstance(f, WindowAgg):
             if row.get(f.entity) is None:
                 out[f.name] = None
                 continue
             lo = t_us - _window_us(f.window)
             prior = [e for e in state.history.get(f.entity, ()) if lo < e.t_us < t_us]
-            if isinstance(f, WindowAgg):
-                if f.value is None:
-                    out[f.name] = float(len(prior) + 1)
-                else:
-                    vals = [float(e.values[f.value]) for e in prior] + [float(row[f.value])]
-                    out[f.name] = _agg(f.agg, vals)
+            if f.value is None:
+                out[f.name] = float(len(prior) + 1)
             else:
-                seen = {e.values.get(f.value) for e in prior}
-                seen.add(row.get(f.value))
-                seen.discard(None)
-                out[f.name] = float(len(seen))
+                vals = [float(e.values[f.value]) for e in prior] + [float(row[f.value])]
+                out[f.name] = _agg(f.agg, vals)
+        elif isinstance(f, DistinctCount):
+            if row.get(f.entity) is None:
+                out[f.name] = None
+                continue
+            w = _window_us(f.window)
+            n = state.distinct.get((f.entity, f.value, w), 0)
+            if row.get(f.value) is not None:
+                # a value is in the window iff its last sighting before t is (store order)
+                last = state.distinct_last.get((f.entity, f.value))
+                if last is None or not t_us - w < last < t_us:
+                    n += 1  # the current event adds a new distinct value
+            out[f.name] = float(n)
         elif isinstance(f, FirstSeen):
             if row.get(f.entity) is None or row.get(f.value) is None:
                 out[f.name] = None

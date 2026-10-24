@@ -8,6 +8,7 @@ A store persists exactly the state described by an ``OnlineSpec`` and hands it b
   mode, or by the stream processor from the decisions topic).
 * ``add_label(...)``: a label became known; it counts in target encodings from the first
   snapshot (00:00 UTC) at or after ``label_available_time``.
+* ``distinct_members(...)``: values recently seen for an entity (the UI's linked cards).
 
 ``RedisFeatureStore`` (Phase 4) implements the same protocol with pipelined Redis reads.
 """
@@ -21,6 +22,7 @@ from datetime import datetime
 from typing import Any, Protocol
 
 from fraudshield.features.online import (
+    DistinctPair,
     EntityState,
     HistoryEvent,
     OnlineSpec,
@@ -48,6 +50,10 @@ class FeatureStore(Protocol):
     ) -> None: ...
 
     async def ping(self) -> bool: ...
+
+    async def distinct_members(
+        self, pair: DistinctPair, key: Any, since_us: int, limit: int
+    ) -> list[str]: ...
 
 
 class TargetEncodingCounts:
@@ -126,6 +132,10 @@ class InMemoryFeatureStore:
         self._history: dict[str, dict[Any, deque[HistoryEvent]]] = {
             e: defaultdict(deque) for e in spec.history_fields
         }
+        # (entity, value) -> entity key -> value -> last time seen (µs)
+        self._distinct: dict[DistinctPair, dict[Any, dict[Any, int]]] = {
+            p: defaultdict(dict) for p in spec.distinct
+        }
         self._seen: dict[tuple[str, str], dict[Any, set[Any]]] = {
             p: defaultdict(set) for p in spec.first_seen
         }
@@ -144,6 +154,16 @@ class InMemoryFeatureStore:
         for entity in self.spec.history_fields:
             key = row.get(entity)
             state.history[entity] = [] if key is None else list(self._history[entity].get(key, ()))
+        for pair, windows in self.spec.distinct.items():
+            entity, value = pair
+            key, v = row.get(entity), row.get(value)
+            seen = self._distinct[pair].get(key, {}) if key is not None else {}
+            for w in windows:
+                lo = t_us - w
+                state.distinct[(entity, value, w)] = sum(
+                    1 for ts in seen.values() if lo < ts < t_us
+                )
+            state.distinct_last[pair] = None if v is None else seen.get(v)
         for entity in self.spec.last_time:
             key = row.get(entity)
             state.last_t_us[entity] = None if key is None else self._last[entity].get(key)
@@ -169,6 +189,16 @@ class InMemoryFeatureStore:
             horizon = t_us - self.spec.retention_us[entity]
             while q and q[0].t_us <= horizon:
                 q.popleft()
+        for pair, windows in self.spec.distinct.items():
+            entity, value = pair
+            key, v = row.get(entity), row.get(value)
+            if key is None or v is None:
+                continue
+            seen = self._distinct[pair][key]
+            seen[v] = t_us
+            horizon = t_us - windows[-1]
+            for old in [x for x, ts in seen.items() if ts <= horizon]:
+                del seen[old]
         for entity in self.spec.last_time:
             if (key := row.get(entity)) is not None:
                 self._last[entity][key] = t_us
@@ -186,6 +216,14 @@ class InMemoryFeatureStore:
 
     async def ping(self) -> bool:
         return self.healthy
+
+    async def distinct_members(
+        self, pair: DistinctPair, key: Any, since_us: int, limit: int
+    ) -> list[str]:
+        self._check()
+        seen = self._distinct.get(pair, {}).get(key, {})
+        recent = sorted((ts, str(v)) for v, ts in seen.items() if ts > since_us)
+        return [v for _, v in reversed(recent)][:limit]  # most recent first
 
 
 async def replay(store: FeatureStore, rows: list[dict[str, Any]], fs: Any) -> list[dict[str, Any]]:

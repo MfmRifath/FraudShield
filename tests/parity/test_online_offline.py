@@ -53,15 +53,16 @@ def test_parity_on_generated_frames(df: pl.DataFrame) -> None:
 @pytest.mark.parity
 def test_online_spec_requirements() -> None:
     spec = OnlineSpec.from_feature_set(build_feature_set(EXTRA_NAMES, 5.0))
-    assert spec.history_fields == {
-        "device_info": ("uid",),
-        "p_email_domain": ("uid",),
-        "uid": ("addr", "amount", "device_info", "p_email_domain"),
-    }
-    assert spec.retention_us == {
-        "uid": 7 * 86_400 * 10**6,
-        "device_info": 7 * 86_400 * 10**6,
-        "p_email_domain": 7 * 86_400 * 10**6,
+    day = 86_400 * 10**6
+    # per-event history only where window aggregates need values; distinct counts use the index
+    assert spec.history_fields == {"uid": ("amount",)}
+    assert spec.retention_us == {"uid": 7 * day}
+    assert spec.distinct == {
+        ("device_info", "uid"): (day, 7 * day),
+        ("p_email_domain", "uid"): (day, 7 * day),
+        ("uid", "addr"): (day, 7 * day),
+        ("uid", "device_info"): (day, 7 * day),
+        ("uid", "p_email_domain"): (day, 7 * day),
     }
     assert spec.first_seen == (("uid", "addr"), ("uid", "device_info"), ("uid", "p_email_domain"))
     assert spec.last_time == ("uid",)

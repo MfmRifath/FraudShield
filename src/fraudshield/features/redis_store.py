@@ -4,6 +4,9 @@ Keys (all built by ``_RedisOps`` so the async reader and the sync writer agree):
 
 * ``fs:h:<entity>:<value>``      ZSET of history events (score = t_us, member = JSON incl. txn id),
                                  trimmed to the entity's retention, PEXPIRE retention + 1 day
+* ``fs:d:<entity>:<col>:<value>`` ZSET distinct-count index: member = a value of ``col``, score =
+                                 when it was last seen (µs); a window count is one ZCOUNT, so a
+                                 popular email domain costs O(log n), not its whole history
 * ``fs:last:<entity>:<value>``   last event time (µs)
 * ``fs:seen:<entity>:<col>:<v>`` SET of values seen for a first-seen pair
 * ``fs:te:<col>:<value>``        HASH ``<visible_day_us>:n`` / ``:p`` label counts per snapshot day
@@ -25,6 +28,7 @@ import redis
 import redis.asyncio as aioredis
 
 from fraudshield.features.online import (
+    DistinctPair,
     EntityState,
     HistoryEvent,
     OnlineSpec,
@@ -54,6 +58,10 @@ class _RedisOps:
         return f"fs:h:{entity}:{_s(value)}"
 
     @staticmethod
+    def distinct_key(entity: str, col: str, value: Any) -> str:
+        return f"fs:d:{entity}:{col}:{_s(value)}"
+
+    @staticmethod
     def last_key(entity: str, value: Any) -> str:
         return f"fs:last:{entity}:{_s(value)}"
 
@@ -78,6 +86,19 @@ class _RedisOps:
                 lo = t_us - self.spec.retention_us[entity]
                 pipe.zrangebyscore(self.hist_key(entity, key), f"({lo}", f"({t_us}")
             steps.append((key is not None, partial(_set_history, entity=entity)))
+
+        for pair, windows in self.spec.distinct.items():
+            entity, col = pair
+            key, v = row.get(entity), row.get(col)
+            k = self.distinct_key(entity, col, key)
+            for w in windows:
+                if key is not None:
+                    pipe.zcount(k, f"({t_us - w}", f"({t_us}")
+                steps.append((key is not None, partial(_set_distinct, slot=(entity, col, w))))
+            queued = key is not None and v is not None
+            if queued:
+                pipe.zscore(k, _s(v))
+            steps.append((queued, partial(_set_distinct_last, pair=pair)))
 
         for entity in self.spec.last_time:
             key = row.get(entity)
@@ -123,6 +144,15 @@ class _RedisOps:
             pipe.zadd(k, {member: t_us})
             pipe.zremrangebyscore(k, "-inf", t_us - ret)
             pipe.pexpire(k, ret // 1000 + _DAY_MS)
+        for (entity, col), windows in self.spec.distinct.items():
+            key, v = row.get(entity), row.get(col)
+            if key is None or v is None:
+                continue
+            k = self.distinct_key(entity, col, key)
+            ret = windows[-1]
+            pipe.zadd(k, {_s(v): t_us}, gt=True)  # keeps the latest sighting
+            pipe.zremrangebyscore(k, "-inf", t_us - ret)
+            pipe.pexpire(k, ret // 1000 + _DAY_MS)
         for entity in self.spec.last_time:
             key = row.get(entity)
             if key is not None:
@@ -146,6 +176,14 @@ class _RedisOps:
 
 def _set_history(st: EntityState, r: Any, *, entity: str) -> None:
     st.history[entity] = [] if r is None else _decode_history(r)
+
+
+def _set_distinct(st: EntityState, r: Any, *, slot: tuple[str, str, int]) -> None:
+    st.distinct[slot] = 0 if r is None else int(r)
+
+
+def _set_distinct_last(st: EntityState, r: Any, *, pair: DistinctPair) -> None:
+    st.distinct_last[pair] = None if r is None else int(float(r))
 
 
 def _set_last(st: EntityState, r: Any, *, entity: str) -> None:
@@ -233,6 +271,16 @@ class RedisFeatureStore:
             return bool(await self.client.ping())
         except (redis.RedisError, OSError):
             return False
+
+    async def distinct_members(
+        self, pair: DistinctPair, key: Any, since_us: int, limit: int
+    ) -> list[str]:
+        k = self._ops.distinct_key(pair[0], pair[1], key)
+        try:
+            got = await self.client.zrevrangebyscore(k, "+inf", f"({since_us}", start=0, num=limit)
+        except (redis.RedisError, OSError) as e:
+            raise FeatureStoreError(f"redis read failed: {e}") from e
+        return [m.decode() if isinstance(m, bytes) else str(m) for m in got]
 
     async def close(self) -> None:
         await self.client.aclose()
