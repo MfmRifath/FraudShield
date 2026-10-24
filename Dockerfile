@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-default-groups --group train --group orchestration --group monitoring --no-editable
 
 # docker build --target trainer -t fraudshield-trainer .
-FROM python:3.12.15-slim-trixie AS trainer
+FROM python:3.14.7-slim-trixie AS trainer
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
@@ -42,7 +42,7 @@ USER app
 CMD ["python", "-m", "fraudshield.flows", "serve"]
 
 # ---------------------------------------------------------------- api image (runtime = last stage)
-FROM python:3.12.15-slim-trixie AS runtime-base
+FROM python:3.14.7-slim-trixie AS runtime-base
 # libgomp1: OpenMP runtime required by LightGBM
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 \
