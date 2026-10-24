@@ -48,6 +48,25 @@ jobs:
           path: pytest-report.xml
           if-no-files-found: ignore
 
+  ui:
+    name: ui (typecheck + vitest + build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
   docker-build:
     name: docker build (api)
     runs-on: ubuntu-24.04
