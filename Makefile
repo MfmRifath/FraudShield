@@ -50,6 +50,17 @@ test-docker: ## lint + tests in a Linux container (needs only Docker; no local l
 		-e HYPOTHESIS_PROFILE -e CI fraudshield-test:dev \
 		sh -c 'uv sync --frozen -q && make lint test PYTEST_ARGS="-p no:cacheprovider $(PYTEST_ARGS)"'
 
+.PHONY: bench
+bench: ## In-process /score latency benchmark -> reports/benchmarks/ (needs libomp on macOS)
+	$(RUN) python scripts/bench_serving.py
+
+.PHONY: bench-docker
+bench-docker: ## Same benchmark inside the Linux test container
+	docker build -q -t fraudshield-test:dev -f infra/dev/Dockerfile.test infra/dev >/dev/null
+	docker run --rm -v "$(CURDIR)":/app -v fraudshield-test-venv:/venv \
+		-v fraudshield-test-uvcache:/root/.cache/uv -e PYTHONDONTWRITEBYTECODE=1 fraudshield-test:dev \
+		sh -c 'uv sync --frozen -q && uv run --frozen python scripts/bench_serving.py'
+
 .PHONY: test-cov
 test-cov: ## Tests with coverage report
 	$(RUN) pytest -m "not integration" --cov --cov-report=term-missing $(PYTEST_ARGS)
