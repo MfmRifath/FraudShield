@@ -283,7 +283,11 @@ def run_training(
         typical=typical,
         reason_map=reason_map,
     )
-    ModelBundle(spec, {"full": full, "degraded": degraded}).save(bundle_dir)
+    # held-out test window for the API's policy simulator (what-if costs / review capacity)
+    window = te.select("amount", "day", "label").with_columns(
+        probability=pl.Series(test_p["lgbm_full"])
+    )
+    ModelBundle(spec, {"full": full, "degraded": degraded}, window).save(bundle_dir)
 
     _setup_mlflow(settings)
     with mlflow.start_run(run_name=f"train-{dataset}") as run:

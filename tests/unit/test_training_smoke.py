@@ -128,12 +128,19 @@ def test_bundle_score_one_matches_batch_and_reasons(
         assert len(reasons) <= 3
         _, deg_reasons = bundle.score_one(row, "degraded")
         assert all(x.feature in deg_names for x in deg_reasons)
-    # every bundle artifact is plain text/JSON (no pickles)
+    # every bundle artifact is plain text/JSON/Parquet (no pickles)
     assert sorted(p.name for p in r.bundle_dir.iterdir()) == [
         "bundle.json",
         "degraded.txt",
         "full.txt",
+        "policy_window.parquet",
     ]
+    # the policy simulator's window: the test split scored by the full model, as saved
+    window = bundle.policy_window
+    assert window is not None
+    assert window.columns == ["amount", "day", "label", "probability"]
+    assert window.height == test.height
+    assert window["probability"].head(50).to_numpy() == pytest.approx(batch, abs=1e-12)
 
 
 @pytest.mark.smoke

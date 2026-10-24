@@ -63,14 +63,22 @@ class BundleSpec(_Model):
     costs: CostConfig
     typical: dict[str, float | str | None]
     reason_map: dict[str, dict[str, str]]
+    # held-out window (probability, amount, day, label) for the policy simulator; optional
+    policy_window_file: str | None = None
 
 
 class ModelBundle:
-    def __init__(self, spec: BundleSpec, boosters: Mapping[Variant, lgb.Booster]) -> None:
+    def __init__(
+        self,
+        spec: BundleSpec,
+        boosters: Mapping[Variant, lgb.Booster],
+        policy_window: pl.DataFrame | None = None,
+    ) -> None:
         if spec.format != BUNDLE_FORMAT:
             raise ValueError(f"unsupported bundle format {spec.format}")
         self.spec = spec
         self.boosters = dict(boosters)
+        self.policy_window = policy_window
         # one mapper per variant: contribution vectors follow that variant's feature order
         self.reasons: dict[Variant, ReasonMapper] = {
             v: ReasonMapper.from_mapping(
@@ -91,7 +99,13 @@ class ModelBundle:
         directory.mkdir(parents=True, exist_ok=True)
         for v in ("full", "degraded"):
             self.boosters[v].save_model(str(directory / self._variant(v).booster_file))
-        (directory / "bundle.json").write_text(self.spec.model_dump_json(indent=2) + "\n")
+        spec = self.spec
+        if self.policy_window is not None:
+            spec = spec.model_copy(update={"policy_window_file": "policy_window.parquet"})
+            self.policy_window.write_parquet(
+                directory / "policy_window.parquet", compression="zstd"
+            )
+        (directory / "bundle.json").write_text(spec.model_dump_json(indent=2) + "\n")
         return directory
 
     @classmethod
@@ -101,7 +115,10 @@ class ModelBundle:
             "full": lgb.Booster(model_file=str(directory / spec.full.booster_file)),
             "degraded": lgb.Booster(model_file=str(directory / spec.degraded.booster_file)),
         }
-        return cls(spec, boosters)
+        window = None
+        if spec.policy_window_file and (directory / spec.policy_window_file).is_file():
+            window = pl.read_parquet(directory / spec.policy_window_file)
+        return cls(spec, boosters, window)
 
     # ------------------------------------------------------------------ scoring
     def matrix(self, df: pl.DataFrame, which: Variant = "full") -> FloatArray:

@@ -76,4 +76,10 @@ def train_bundle(
         typical=typical,
         reason_map=ReasonMapper.from_feature_set(fs, fs.names, typical).mapping(),
     )
-    return ModelBundle(spec, boosters).save(out_dir)
+    full = boosters["full"]
+    window = calib.select(
+        "amount", "label", day=pl.col("event_time").dt.truncate("1d")
+    ).with_columns(
+        probability=pl.Series(cals["full"].apply(full.predict(build_matrix(calib, fs.names, enc))))
+    )
+    return ModelBundle(spec, boosters, window).save(out_dir)

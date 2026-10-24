@@ -27,6 +27,8 @@ from fraudshield.model_bundle import Variant as BundleVariant
 from fraudshield.reasons import Reason
 from fraudshield.rules import RuleResult, RuleSet
 from fraudshield.schema import Decision
+from fraudshield.serving.activity import ActivityLog
+from fraudshield.serving.activity import summary as activity_summary
 from fraudshield.serving.breaker import CircuitBreaker
 from fraudshield.serving.events import Broadcaster, Publisher
 from fraudshield.serving.metrics import ServingMetrics
@@ -75,6 +77,8 @@ class ScoringService:
     update_store_inline: bool
     capacity: ReviewCapacity
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    activity: ActivityLog | None = None
+    write_activity: bool = False  # in-process mode; with the stream processor it writes instead
 
     async def score(self, req: ScoreRequest) -> ScoreResponse:
         t0 = time.perf_counter()
@@ -243,23 +247,24 @@ class ScoringService:
                 self.metrics.review_queue_depth.set(await self.cases.open_count())
             if self.update_store_inline and fetched:
                 await self.store.update(row)
+            if self.write_activity and self.activity is not None:
+                await self.activity.append(row["uid"], activity_summary(event, row))
         except FeatureStoreError as e:
             log.warning("store update failed for %s: %s", resp.txn_id, e)
         except Exception:
             log.exception("post-score side effect failed for %s", resp.txn_id)
 
     async def record_label(self, case: Case) -> None:
-        """Analyst label -> labels topic + online target encodings."""
+        """Analyst label -> ``labels`` topic (Parquet sink, audit).
+
+        It does not touch online target encodings: offline features count matured chargebacks
+        only, and online must match them (parity); analyst labels reach models through
+        ``build_training_set`` instead (ADR-0013).
+        """
         if case.label is None or case.labeled_at is None:
             raise ValueError(f"case {case.case_id} is not labelled")
-        y = 1 if case.label == "fraud" else 0
         self.publisher.publish(
             LABELS_TOPIC, case.txn["uid"],
-            {"txn_id": case.case_id, "label": y, "label_source": "analyst", "label_time": case.labeled_at,
-             "analyst_id": case.analyst_id, "attrs": {c: case.txn.get(c) for c in self.store.spec.te_columns}},
+            {"txn_id": case.case_id, "label": 1 if case.label == "fraud" else 0, "label_source": "analyst",
+             "label_time": case.labeled_at, "analyst_id": case.analyst_id},
         )  # fmt: skip
-        try:
-            attrs = {c: case.txn.get(c) for c in self.store.spec.te_columns}
-            await self.store.add_label(case.case_id, y, case.labeled_at, attrs)
-        except FeatureStoreError as e:
-            log.warning("could not add label %s to the feature store: %s", case.case_id, e)

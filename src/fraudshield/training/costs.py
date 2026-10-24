@@ -159,3 +159,17 @@ def dollar_summary(
 def approve_all_cost(y: npt.ArrayLike, amount: FloatArray, c: CostConfig) -> float:
     y = np.asarray(y, dtype=np.float64)
     return float((y * (np.asarray(amount, dtype=np.float64) + c.chargeback_fee)).sum())
+
+
+def policy_outcome(window: pl.DataFrame, c: CostConfig) -> dict[str, float]:
+    """Decisions + dollars for a held-out ``window`` (probability, amount, day, label) under ``c``."""
+    p, a, y = (
+        window["probability"].to_numpy(),
+        window["amount"].to_numpy(),
+        window["label"].to_numpy(),
+    )
+    d = decide(p, a, window["day"].to_numpy(), c)
+    out = dollar_summary(d, y, a, c)
+    out["approve_all_cost"] = approve_all_cost(y, a, c)
+    out["net_savings_vs_approve_all"] = out["approve_all_cost"] - out["total_cost"]
+    return out

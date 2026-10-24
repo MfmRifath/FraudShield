@@ -7,25 +7,36 @@ Tests pass their own components to ``create_app`` instead of the configured ones
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import secrets
 from collections.abc import AsyncIterable, AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from fraudshield.cases.store import Case, CaseNotFoundError, CaseStore, InMemoryCaseStore
+from fraudshield.cases.postgres import PostgresCaseStore
+from fraudshield.cases.store import (
+    AuditEntry,
+    Case,
+    CaseNotFoundError,
+    CaseStore,
+    InMemoryCaseStore,
+)
 from fraudshield.config import Settings, get_settings
 from fraudshield.features.online import OnlineSpec
 from fraudshield.features.redis_store import RedisFeatureStore
 from fraudshield.features.store import FeatureStore, InMemoryFeatureStore
+from fraudshield.monitoring.summary import counter_by, histogram_quantiles, latest_drift
 from fraudshield.rules import RuleSet
+from fraudshield.serving.activity import ActivityLog, InMemoryActivityLog, RedisActivityLog
 from fraudshield.serving.breaker import CircuitBreaker
 from fraudshield.serving.events import Broadcaster, MemorySink, Publisher, Sink
 from fraudshield.serving.kafka_sink import KafkaSink
@@ -33,13 +44,16 @@ from fraudshield.serving.metrics import ServingMetrics
 from fraudshield.serving.models import ModelLoadError, ModelManager
 from fraudshield.serving.schemas import (
     CanaryRequest,
+    CaseContext,
     LabelRequest,
     ModelInfo,
+    PolicyRequest,
     ScoreRequest,
     ScoreResponse,
 )
 from fraudshield.serving.scorer import ReviewCapacity, ScoringService
-from fraudshield.training.costs import CostConfig
+from fraudshield.streaming.common import decode_row
+from fraudshield.training.costs import COST_FIELDS, CostConfig, policy_outcome
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +66,7 @@ class AppState:
     cases: CaseStore
     metrics: ServingMetrics
     load_error: str | None = None
+    activity: ActivityLog | None = None
 
 
 def _state(request: Request) -> AppState:
@@ -110,22 +125,40 @@ def create_app(
         publisher = Publisher(out_sink, srv.publish_queue_size,
                               on_drop=lambda t: metrics.publish_dropped.labels(topic=t).inc())  # fmt: skip
         publisher.start()
-        case_store = cases or InMemoryCaseStore()
+        case_store: CaseStore
+        pg_store: PostgresCaseStore | None = None
+        if cases is not None:
+            case_store = cases
+        elif settings.cases.store == "postgres":
+            pg_store = await PostgresCaseStore.connect(
+                settings.cases.dsn.get_secret_value(), settings.cases.pool_max
+            )
+            case_store = pg_store
+        else:
+            case_store = InMemoryCaseStore()
+        activity: ActivityLog = (
+            RedisActivityLog(fstore.client)
+            if isinstance(fstore, RedisFeatureStore)
+            else InMemoryActivityLog()
+        )
         costs = CostConfig.load(settings.paths.costs)
         service = ScoringService(
             models=mm, store=fstore, rules=RuleSet.load(settings.paths.rules), costs=costs,
             publisher=publisher, broadcaster=Broadcaster(srv.sse_queue_size), cases=case_store,
             metrics=metrics, breaker=CircuitBreaker(srv.breaker_failure_threshold, srv.breaker_reset_s),
             feature_timeout_s=srv.feature_timeout_ms / 1e3, update_store_inline=srv.update_store_inline,
-            capacity=ReviewCapacity(costs.review_capacity_per_day),
+            capacity=ReviewCapacity(costs.review_capacity_per_day), activity=activity,
+            write_activity=srv.update_store_inline,
         )  # fmt: skip
-        app.state.fs = AppState(settings, service, mm, case_store, metrics, load_error)
+        app.state.fs = AppState(settings, service, mm, case_store, metrics, load_error, activity)
         try:
             yield
         finally:
             await publisher.close()
             if isinstance(fstore, RedisFeatureStore):
                 await fstore.close()
+            if pg_store is not None:
+                await pg_store.close()
 
     app = FastAPI(title="FraudShield", version="0.1.0", lifespan=lifespan)
 
@@ -226,5 +259,99 @@ def create_app(
         await st.service.record_label(case)
         st.metrics.review_queue_depth.set(await st.cases.open_count())
         return case
+
+    @app.get("/cases/{case_id}/context")
+    async def case_context(case_id: str, st: StateDep) -> CaseContext:
+        """Card timeline (last N events) and entities linked through shared device / email."""
+        try:
+            case = await st.cases.get(case_id)
+        except CaseNotFoundError as e:
+            raise HTTPException(404, f"case {case_id} not found") from e
+        row = decode_row(case.txn)
+        uid = str(row.get("uid"))
+        timeline = (
+            await st.activity.recent(uid, st.settings.cases.timeline_events) if st.activity else []
+        )
+        linked: dict[str, list[str]] = {}
+        available = True
+        try:
+            state = await asyncio.wait_for(st.service.store.fetch(row), timeout=1.0)
+            for col in ("device_info", "p_email_domain"):
+                hist = state.history.get(col, [])
+                uids = sorted(
+                    {
+                        str(e.values.get("uid"))
+                        for e in hist
+                        if e.values.get("uid") not in (None, uid)
+                    }
+                )
+                if row.get(col) is not None:
+                    linked[col] = uids
+        except Exception as e:  # the context is best-effort; the case itself is in the case store
+            log.warning("case context: feature store unavailable: %s", e)
+            available = False
+        return CaseContext(
+            case_id=case_id, uid=uid, timeline=timeline, linked=linked, store_available=available
+        )
+
+    @app.get("/cases/{case_id}/audit")
+    async def case_audit(case_id: str, st: StateDep) -> list[AuditEntry]:
+        return await st.cases.audit_trail(case_id)
+
+    @app.get("/monitoring/summary")
+    async def monitoring_summary(st: StateDep) -> dict[str, Any]:
+        reg = st.metrics.registry
+        return {
+            "models": st.models.versions(),
+            "canary_pct": st.models.canary_pct,
+            "decisions": counter_by(reg, "decisions", "decision"),
+            "fallbacks": {k: v for k, v in counter_by(reg, "fallback", "reason").items() if v > 0},
+            "latency_s": histogram_quantiles(reg, "score_latency_seconds"),
+            "review_queue_depth": await st.cases.open_count(),
+            "drift": latest_drift(st.settings.monitoring.report_dir),
+        }
+
+    @app.get("/monitoring/drift/latest.html", response_class=FileResponse)
+    async def drift_report(st: StateDep) -> FileResponse:
+        report_dir = st.settings.monitoring.report_dir
+        d = latest_drift(report_dir)
+        if not d or not d.get("has_html"):
+            raise HTTPException(404, "no drift report yet")
+        latest = json.loads((report_dir / "latest.json").read_text())
+        name = Path(str(latest["report_html"])).name  # basename only: no path traversal
+        return FileResponse(report_dir / name, media_type="text/html")
+
+    def _window(st: AppState) -> Any:
+        champion = st.models.champion
+        if champion is None or champion.bundle.policy_window is None:
+            raise HTTPException(409, "the champion model has no policy window (retrain to add one)")
+        return champion.bundle.policy_window
+
+    def _window_info(w: Any) -> dict[str, int]:
+        return {"rows": w.height, "days": w["day"].n_unique(), "frauds": int(w["label"].sum())}
+
+    @app.get("/policy/current")
+    async def policy_current(st: StateDep) -> dict[str, Any]:
+        w = _window(st)
+        costs = st.service.costs
+        return {
+            "costs": costs.model_dump(),
+            "outcome": policy_outcome(w, costs),
+            "window": _window_info(w),
+        }
+
+    @app.post("/policy/simulate")
+    async def policy_simulate(body: PolicyRequest, st: StateDep) -> dict[str, Any]:
+        """What-if: recompute decisions and dollars on the held-out window with other costs."""
+        w = _window(st)
+        current = st.service.costs
+        update = {f: getattr(body, f) for f in COST_FIELDS if getattr(body, f) is not None}
+        update["review_capacity_per_day"] = body.review_capacity_per_day
+        simulated = current.model_copy(update=update)
+        return {
+            "window": _window_info(w),
+            "current": {"costs": current.model_dump(), "outcome": policy_outcome(w, current)},
+            "simulated": {"costs": simulated.model_dump(), "outcome": policy_outcome(w, simulated)},
+        }
 
     return app

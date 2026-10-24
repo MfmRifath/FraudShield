@@ -16,6 +16,7 @@ from fraudshield.training.costs import (
     dollar_summary,
     expected_costs,
     limit_reviews,
+    policy_outcome,
     realized_costs,
 )
 
@@ -124,3 +125,25 @@ def test_scaled_rejects_unknown_field() -> None:
     assert C.scaled("analyst_cost", 2).analyst_cost == 8
     with pytest.raises(ValueError, match="unknown"):
         C.scaled("review_capacity_per_day", 2)
+
+
+@pytest.mark.unit
+def test_policy_outcome_matches_its_parts_and_capacity() -> None:
+    import polars as pl
+
+    rng = np.random.default_rng(0)
+    n = 400
+    w = pl.DataFrame({
+        "amount": rng.lognormal(4, 1, n), "day": rng.integers(0, 4, n),
+        "label": (rng.random(n) < 0.1).astype(np.int8), "probability": rng.random(n),
+    })  # fmt: skip
+    p, a, y, day = (w[c].to_numpy() for c in ("probability", "amount", "label", "day"))
+    out = policy_outcome(w, C)
+    d = decide(p, a, day, C)
+    assert {k: out[k] for k in dollar_summary(d, y, a, C)} == dollar_summary(d, y, a, C)
+    assert out["approve_all_cost"] == approve_all_cost(y, a, C)
+    assert out["net_savings_vs_approve_all"] == pytest.approx(
+        out["approve_all_cost"] - out["total_cost"]
+    )
+    capped = policy_outcome(w, C.model_copy(update={"review_capacity_per_day": 5}))
+    assert 0 < capped["n_review"] <= 5 * 4 < out["n_review"]

@@ -83,6 +83,29 @@ class LabelRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=4000)
 
 
+class CaseContext(BaseModel):
+    case_id: str
+    uid: str
+    timeline: list[dict[str, Any]]
+    linked: dict[str, list[str]] = Field(
+        description="column -> other uids seen with the same value (7d)"
+    )
+    store_available: bool
+
+
+class PolicyRequest(BaseModel):
+    """Cost overrides for the policy simulator; omitted fields keep the current value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chargeback_fee: float | None = Field(default=None, ge=0)
+    margin_rate: float | None = Field(default=None, ge=0, le=1)
+    churn_penalty: float | None = Field(default=None, ge=0)
+    analyst_cost: float | None = Field(default=None, ge=0)
+    review_friction: float | None = Field(default=None, ge=0)
+    review_capacity_per_day: int | None = Field(default=None, ge=0, description="null = unlimited")
+
+
 class CanaryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
