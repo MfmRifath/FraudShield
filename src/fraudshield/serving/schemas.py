@@ -83,6 +83,12 @@ class LabelRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=4000)
 
 
+class CanaryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pct: int = Field(ge=0, le=100, description="share of uids (stable hash) routed to @challenger")
+
+
 class ModelInfo(BaseModel):
     champion: str | None
     challenger: str | None
