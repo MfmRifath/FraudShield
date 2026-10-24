@@ -107,6 +107,36 @@ Five pages:
 
 A label is written to Postgres (`cases`, `labels`, `audit_log`) in one transaction, and published to the `labels` topic. The next `build-training-set` run picks it up, which is tested end to end. nginx serves the build and proxies `/api` to the service; admin endpoints are not exposed there. See [ADR-0013](docs/adr/0013-analyst-ui-and-case-store.md).
 
+## Load test
+
+```bash
+make loadtest     # stack with a production-sized synthetic model; Locust: normal / no reason codes / Redis killed
+```
+
+Locust sends Poisson-distributed requests: 70 % from returning cards, 30 % from new ones. While it runs, the orchestrator samples the API's metrics and kills and restarts Redis for the third scenario. The generated report, [reports/loadtest/report.md](reports/loadtest/report.md), has:
+- client and service latency;
+- failed requests;
+- the share of requests on a fallback path;
+- charts.
+
+The first runs found three problems: a circuit breaker that turned short stalls into 30 s of degraded scoring, distinct-count features that read a whole email domain's history on every request, and model inference blocking the event loop. All three were fixed, with tests ([ADR-0014](docs/adr/0014-hardening-and-deployment.md)).
+
+## Demo and deployment
+
+```bash
+make demo         # ONE container: API + in-process replayer + in-memory stores + UI -> http://localhost:8088
+make demo-check   # 3 minutes at 50 tx/s: UI and API up, memory under 1 GiB -> reports/demo/demo-check.md
+make up-lite      # the full system trimmed for an 8 GB laptop (compose.lite.yml)
+```
+
+- On every push to `main`, CD builds multi-arch images (amd64 + arm64) for the API, trainer, demo, UI and MLflow, and pushes them to GHCR. An optional SSH deploy job can follow.
+- A weekly workflow triggers retraining on the deployed Prefect server and checks the training pipeline on synthetic data.
+
+Guides:
+- [docs/deploy/arm-vm.md](docs/deploy/arm-vm.md): the full stack on an Arm VM behind Caddy (TLS + login);
+- [docs/deploy/single-container.md](docs/deploy/single-container.md): the demo on any container host;
+- [docs/runbook.md](docs/runbook.md): alerts, failure scenarios and routine operations.
+
 ## Design decisions
 
 Architecture Decision Records live in [docs/adr/](docs/adr/README.md).

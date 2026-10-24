@@ -18,7 +18,7 @@
 2. **Target encodings online:** labels go into a heap keyed by their visible snapshot (next 00:00 UTC at or after `label_available_time`) and are folded into cumulative counts as snapshots advance. This is the same daily-snapshot semantics as offline (ADR-0005).
 3. **Pipeline** (`serving/scorer.py`), in order:
    1. validate (pydantic, 422 on bad input);
-   2. feature fetch under `asyncio.wait_for(10 ms)` and a circuit breaker (5 consecutive failures, then open for 30 s, then one half-open trial);
+   2. feature fetch under `asyncio.wait_for(10 ms)` and a circuit breaker (5 consecutive failures, then open for 30 s, then one half-open trial; *superseded by [ADR-0014](0014-hardening-and-deployment.md): a failure-rate breaker over a 2 s window, open for 5 s*);
    3. online features;
    4. hard rules;
    5. model (one booster, `num_threads=1`) + calibrator;
