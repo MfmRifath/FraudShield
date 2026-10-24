@@ -204,13 +204,36 @@ class ServingConfig(_Frozen):
     update_store_inline: bool = Field(
         default=True, description="API updates the store after scoring (no stream processor)"
     )
+    feature_store: Literal["memory", "redis"] = "memory"
+    publisher: Literal["memory", "kafka"] = "memory"
     publish_queue_size: int = Field(default=10_000, ge=1)
     sse_queue_size: int = Field(default=1_000, ge=1)
     admin_token: SecretStr | None = None
 
 
+class StreamingConfig(_Frozen):
+    """Kafka/Redpanda topics, Redis, workers (ADR-0010)."""
+
+    bootstrap_servers: str = "localhost:19092"
+    topic_raw: str = "transactions.raw"
+    topic_truth: str = "transactions.truth"
+    topic_decisions: str = "decisions"
+    topic_labels: str = "labels"
+    topic_shadow: str = "shadow.scores"
+    partitions: int = Field(default=3, ge=1)
+    redis_url: str = "redis://localhost:6380/0"
+    redis_timeout_s: float = Field(default=0.05, gt=0)
+    api_url: str = "http://localhost:8000"
+    gateway_timeout_s: float = Field(default=2.0, gt=0)
+    parquet_dir: Path = Path("data/stream")
+    parquet_flush_s: float = Field(default=10.0, gt=0)
+    parquet_max_rows: int = Field(default=50_000, ge=1)
+    metrics_port: int = Field(default=9100, ge=1, le=65535)
+    challenger_bundle_dir: Path | None = None
+
+
 class Settings(BaseSettings):
-    """Root settings object. Later phases add sections (streaming, ...)."""
+    """Root settings object. Later phases add sections (mlops, monitoring, ...)."""
 
     model_config = SettingsConfigDict(
         env_prefix="FRAUDSHIELD_",
@@ -229,6 +252,7 @@ class Settings(BaseSettings):
     features: FeaturesConfig = FeaturesConfig()
     training: TrainingConfig = TrainingConfig()
     serving: ServingConfig = ServingConfig()
+    streaming: StreamingConfig = StreamingConfig()
 
     @model_validator(mode="after")
     def _labels_mature_within_gap(self) -> Self:

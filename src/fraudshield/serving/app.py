@@ -23,10 +23,12 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from fraudshield.cases.store import Case, CaseNotFoundError, CaseStore, InMemoryCaseStore
 from fraudshield.config import Settings, get_settings
 from fraudshield.features.online import OnlineSpec
+from fraudshield.features.redis_store import RedisFeatureStore
 from fraudshield.features.store import FeatureStore, InMemoryFeatureStore
 from fraudshield.rules import RuleSet
 from fraudshield.serving.breaker import CircuitBreaker
 from fraudshield.serving.events import Broadcaster, MemorySink, Publisher, Sink
+from fraudshield.serving.kafka_sink import KafkaSink
 from fraudshield.serving.metrics import ServingMetrics
 from fraudshield.serving.models import ModelLoadError, ModelManager
 from fraudshield.serving.schemas import LabelRequest, ModelInfo, ScoreRequest, ScoreResponse
@@ -80,8 +82,22 @@ def create_app(
                 load_error = str(e)
                 log.error("model load failed: %s", e)
         metrics.set_model_versions(mm.versions())
-        fstore = store or InMemoryFeatureStore(OnlineSpec.from_feature_set(mm.feature_set))
-        publisher = Publisher(sink or MemorySink(), srv.publish_queue_size,
+        spec = OnlineSpec.from_feature_set(mm.feature_set)
+        fstore: FeatureStore
+        if store is not None:
+            fstore = store
+        elif srv.feature_store == "redis":
+            st_cfg = settings.streaming
+            fstore = RedisFeatureStore.from_url(spec, st_cfg.redis_url, st_cfg.redis_timeout_s)
+        else:
+            fstore = InMemoryFeatureStore(spec)
+        if sink is not None:
+            out_sink: Sink = sink
+        elif srv.publisher == "kafka":
+            out_sink = KafkaSink(settings.streaming.bootstrap_servers)
+        else:
+            out_sink = MemorySink()
+        publisher = Publisher(out_sink, srv.publish_queue_size,
                               on_drop=lambda t: metrics.publish_dropped.labels(topic=t).inc())  # fmt: skip
         publisher.start()
         case_store = cases or InMemoryCaseStore()
@@ -98,6 +114,8 @@ def create_app(
             yield
         finally:
             await publisher.close()
+            if isinstance(fstore, RedisFeatureStore):
+                await fstore.close()
 
     app = FastAPI(title="FraudShield", version="0.1.0", lifespan=lifespan)
 

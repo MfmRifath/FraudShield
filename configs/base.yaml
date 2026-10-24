@@ -69,9 +69,29 @@ serving:
   breaker_failure_threshold: 5
   breaker_reset_s: 30
   update_store_inline: true   # false when the stream processor updates the store (Phase 4)
+  feature_store: memory      # redis in docker compose
+  publisher: memory          # kafka in docker compose
   publish_queue_size: 10000
   sse_queue_size: 1000
   # admin_token: set FRAUDSHIELD_SERVING__ADMIN_TOKEN to enable POST /admin/reload
+
+streaming:
+  # Host defaults; docker compose overrides them with FRAUDSHIELD_STREAMING__* env vars.
+  bootstrap_servers: localhost:19092
+  topic_raw: transactions.raw
+  topic_truth: transactions.truth
+  topic_decisions: decisions
+  topic_labels: labels
+  topic_shadow: shadow.scores
+  partitions: 3
+  redis_url: redis://localhost:6380/0   # compose maps Redis to host port 6380
+  redis_timeout_s: 0.05
+  api_url: http://localhost:8000
+  gateway_timeout_s: 2.0
+  parquet_dir: data/stream
+  parquet_flush_s: 10
+  parquet_max_rows: 50000
+  metrics_port: 9100
 
 datasets:
   ieee_cis:
