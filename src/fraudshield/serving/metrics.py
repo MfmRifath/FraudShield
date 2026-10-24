@@ -5,6 +5,11 @@ from __future__ import annotations
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
 LATENCY_BUCKETS = (0.001, 0.0025, 0.005, 0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0)
+# every reason ServingService can report (scorer.py); zero-initialised for dashboards
+FALLBACK_REASONS = (
+    "feature_timeout", "feature_store_error", "circuit_open", "model_error", "no_model",
+    "internal_error", "review_capacity",
+)  # fmt: skip
 SCORE_BUCKETS = (0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0)
 
 
@@ -42,6 +47,12 @@ class ServingMetrics:
             ["topic"],
             registry=r,
         )
+
+        # zero-initialise known label sets so dashboards show 0 instead of "No data"
+        for topic in ("decisions", "labels"):
+            self.publish_dropped.labels(topic=topic)
+        for reason in FALLBACK_REASONS:
+            self.fallbacks.labels(reason=reason)
 
     def set_model_versions(self, versions: dict[str, str | None]) -> None:
         self.model_version_info.clear()

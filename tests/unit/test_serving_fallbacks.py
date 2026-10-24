@@ -255,3 +255,18 @@ def test_store_is_pinged_at_startup(bundle_dir: Path, tmp_path: Path) -> None:
     store.ping = ping  # type: ignore[method-assign]
     with TestClient(app):
         assert calls == ["ping"]
+
+
+@pytest.mark.unit
+def test_fallback_reasons_are_all_declared() -> None:
+    """Every fallback reason the scorer can emit is zero-initialised for the dashboards."""
+    import re
+
+    from fraudshield.serving.metrics import FALLBACK_REASONS
+
+    src = (Path(__file__).resolve().parents[2] / "src/fraudshield/serving/scorer.py").read_text()
+    emitted = set(re.findall(r'(?:fallback|reason)\s*=\s*"([a-z_]+)"', src)) | set(
+        re.findall(r'return None, "([a-z_]+)"', src)
+    )
+    assert emitted - {"internal_error"} <= set(FALLBACK_REASONS), emitted - set(FALLBACK_REASONS)
+    assert "internal_error" in FALLBACK_REASONS
