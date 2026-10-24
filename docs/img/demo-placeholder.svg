@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="300" viewBox="0 0 960 300" role="img" aria-label="Demo recording placeholder">
+  <rect width="960" height="300" rx="14" fill="#f0efec"/>
+  <rect x="1" y="1" width="958" height="298" rx="13" fill="none" stroke="#c3c2b7" stroke-dasharray="8 6"/>
+  <text x="480" y="132" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="26" font-weight="600" fill="#0b0b0b">Demo recording goes here</text>
+  <text x="480" y="172" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="17" fill="#52514e">Live feed → review queue (F / L / E) → case detail → policy simulator</text>
+  <text x="480" y="204" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="15" fill="#898781">Record it with docs/demo-video-script.md and save it as docs/img/demo.gif</text>
+</svg>
