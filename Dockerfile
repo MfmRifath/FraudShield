@@ -19,10 +19,10 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-default-groups --group train --group orchestration --no-install-project
+    uv sync --frozen --no-dev --no-default-groups --group train --group orchestration --group monitoring --no-install-project
 COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-default-groups --group train --group orchestration --no-editable
+    uv sync --frozen --no-dev --no-default-groups --group train --group orchestration --group monitoring --no-editable
 
 # docker build --target trainer -t fraudshield-trainer .
 FROM python:3.12.15-slim-trixie AS trainer

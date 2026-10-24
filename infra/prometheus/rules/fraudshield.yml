@@ -1,0 +1,38 @@
+# Alert rules (spec: p95 > 100 ms for 5m, fallback rate > 1%, consumer lag > 30 s) + drift + liveness.
+groups:
+  - name: fraudshield-slo
+    rules:
+      - alert: ScoreLatencyP95High
+        expr: histogram_quantile(0.95, sum by (le) (rate(score_latency_seconds_bucket[5m]))) > 0.1
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: "/score p95 latency above 100 ms for 5 minutes ({{ $value | humanizeDuration }})"
+      - alert: FallbackRateHigh
+        # review_capacity is a policy outcome, not a degradation
+        expr: >-
+          sum(rate(fallback_total{reason!="review_capacity"}[5m]))
+          / clamp_min(sum(rate(decisions_total[5m])), 1e-9) > 0.01
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: "More than 1% of /score requests take a fallback path ({{ $value | humanizePercentage }})"
+      - alert: ConsumerLagHigh
+        expr: max by (worker, topic) (consumer_lag_seconds) > 30
+        for: 1m
+        labels: {severity: page}
+        annotations:
+          summary: "{{ $labels.worker }} is {{ $value | humanizeDuration }} behind on {{ $labels.topic }}"
+      - alert: ServiceTargetDown
+        expr: up{job=~"api|stream-workers"} == 0
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: "{{ $labels.instance }} is not being scraped"
+  - name: fraudshield-models
+    rules:
+      - alert: DriftDetected
+        expr: max(drift_detected{reason="any"}) == 1
+        labels: {severity: ticket}
+        annotations:
+          summary: "Drift job triggered retraining (feature drift, score PSI or PR-AUC drop); see reports/drift/latest.json"

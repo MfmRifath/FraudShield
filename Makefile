@@ -65,7 +65,7 @@ bench-docker: ## Same benchmark inside the Linux test container
 test-cov: ## Tests with coverage report
 	$(RUN) pytest -m "not integration" --cov --cov-report=term-missing $(PYTEST_ARGS)
 
-IT_MARKERS ?= integration and not mlops
+IT_MARKERS ?= integration and not mlops and not monitoring
 TEST_IMAGE_RUN = docker run --rm -v "$(CURDIR)":/app -v fraudshield-test-venv:/venv \
 	-v fraudshield-test-uvcache:/root/.cache/uv -e PYTHONDONTWRITEBYTECODE=1 -e MLFLOW_DISABLE_AGENT_HINT=1
 
@@ -82,6 +82,11 @@ test-integration: up ## Compose integration tests (test container on the compose
 test-integration-mlops: ## Integration tests incl. the mlops profile (MLflow server, Prefect flow run)
 	$(MAKE) up-mlops
 	$(MAKE) test-integration IT_MARKERS="integration" PROFILES="--profile core --profile mlops"
+
+.PHONY: test-integration-all
+test-integration-all: ## Integration tests for all profiles (core + mlops + monitoring)
+	$(MAKE) up-all
+	$(MAKE) test-integration IT_MARKERS="integration" PROFILES="--profile core --profile mlops --profile monitoring"
 
 .PHONY: clean
 clean: ## Remove caches and build outputs (keeps data/)
@@ -133,7 +138,7 @@ docs: ## Render docs/model_card.md from reports/<ds>/metrics.json
 # ---------------------------------------------------------------- runtime
 COMPOSE ?= docker compose
 PROFILES ?= --profile core
-ALL_PROFILES = --profile core --profile mlops
+ALL_PROFILES = --profile core --profile mlops --profile monitoring
 
 .PHONY: dev-bundle
 dev-bundle: ## Train dev champion/challenger bundles on the CC0 fixture -> artifacts/dev (in Docker)
@@ -148,6 +153,19 @@ up: ## docker compose up --wait (profile core; later phases add mlops/monitoring
 .PHONY: up-mlops
 up-mlops: ## up with profiles core + mlops (postgres, mlflow, prefect server + worker)
 	$(MAKE) up PROFILES="--profile core --profile mlops"
+
+.PHONY: up-all
+up-all: ## up with profiles core + mlops + monitoring (Prometheus :9090, Grafana :3000)
+	$(MAKE) up PROFILES="--profile core --profile mlops --profile monitoring"
+
+.PHONY: dashboards
+dashboards: ## Regenerate infra/grafana/dashboards/*.json from scripts/build_dashboards.py
+	$(RUN) python scripts/build_dashboards.py
+
+.PHONY: lint-infra
+lint-infra: ## promtool check config + alert rules (Docker)
+	docker run --rm --entrypoint promtool -v "$(CURDIR)/infra/prometheus":/etc/prometheus:ro prom/prometheus:v3.15.1 \
+		check config /etc/prometheus/prometheus.yml
 
 .PHONY: mlops-demo
 mlops-demo: ## ONE command: retrain -> @challenger -> gate + shadow -> promote -> rollback (synthetic, SQLite, in Docker)
@@ -189,8 +207,10 @@ replay: ## Replay into transactions.raw (SOURCE=fixture|canonical, RATE=events/s
 	$(RUN) fraudshield replay --source $(SOURCE) --rate $(RATE) $(DS_ARG) $(ARGS)
 
 .PHONY: drift-demo
-drift-demo: ## Replay with injected fraud-ring drift
-	$(call not_yet,Phase 6)
+drift-demo: up-all ## Normal replay, then fraud-ring drift -> drift job -> DriftDetected alert -> retrain
+	$(TEST_IMAGE_RUN) --network fraudshield_default -e FRAUDSHIELD_STREAMING__BOOTSTRAP_SERVERS=redpanda:9092 \
+		-e PREFECT_API_URL=http://prefect-server:4200/api fraudshield-test:dev \
+		sh -c 'uv sync --frozen -q && uv run --frozen python scripts/drift_demo.py'
 
 .PHONY: loadtest
 loadtest: ## Locust scenarios + markdown report

@@ -1,7 +1,8 @@
 # FraudShield local stack.
 #   make up         -> profile "core": redpanda, console, redis, api, processor + stream workers
 #   make up-mlops   -> + profile "mlops": postgres, mlflow, prefect-server, prefect-worker
-# Later phases add profiles: monitoring (prometheus, grafana), ui.
+#   make up-all     -> + profile "monitoring": prometheus (:9090), grafana (:3000)
+# Later phases add profile: ui.
 # Every service has a healthcheck and a memory limit; all images are multi-arch (amd64/arm64).
 # Host ports are overridable: FS_KAFKA_PORT, FS_REDIS_PORT (6380), FS_MLFLOW_PORT (5050; macOS AirPlay
 # holds 5000), FS_PG_PORT (5433), FS_PREFECT_PORT, FS_API_PORT, FS_CONSOLE_PORT, ...
@@ -286,10 +287,14 @@ services:
       PREFECT_RUNNER_SERVER_HOST: 0.0.0.0
       PREFECT_RUNNER_SERVER_PORT: "8080"
       FRAUDSHIELD_MLOPS__API_URL: http://api:8000
+      # the drift job retrains with this flow; mlops-demo (synthetic) until the real training run
+      FRAUDSHIELD_MONITORING__RETRAIN_FLOW: ${FS_RETRAIN_FLOW:-mlops-demo}
     volumes:
       - ./data:/app/data
       - ./reports:/app/reports
       - worker-artifacts:/app/artifacts
+      - ./artifacts/dev:/app/artifacts/dev:ro   # champion bundle the drift job monitors
+      - stream-data:/data/stream:ro             # served-traffic log written by parquet-sink
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
       interval: 15s
@@ -298,9 +303,55 @@ services:
       start_period: 30s
     mem_limit: 3g
 
+  # ---------------------------------------------------------------- monitoring profile
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    profiles: [monitoring]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+      - --web.enable-lifecycle
+    volumes:
+      - ./infra/prometheus:/etc/prometheus:ro
+      - prom-data:/prometheus
+    ports:
+      - "${FS_PROMETHEUS_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 512m
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    profiles: [monitoring]
+    depends_on:
+      prometheus: { condition: service_healthy }
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${FS_GRAFANA_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/service-slos.json
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${FS_GRAFANA_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    mem_limit: 384m
+
 volumes:
   redpanda-data:
   stream-data:
   pg-data:
   mlflow-artifacts:
   worker-artifacts:
+  prom-data:
+  grafana-data:
