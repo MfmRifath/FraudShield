@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fraudshield.config import Settings
 from fraudshield.features.definitions import FeatureSet
-from fraudshield.model_bundle import ModelBundle
+from fraudshield.model_bundle import ModelBundle, find_bundle_dir
 from fraudshield.pipeline import feature_set_for
 
 log = logging.getLogger(__name__)
@@ -44,23 +44,21 @@ def _load_bundle_dir(path: Path, alias: str) -> ModelSlot:
 
 def _load_mlflow(uri: str, alias: str, tracking_uri: str) -> ModelSlot:
     """``models:/<name>@<alias>`` -> download the pyfunc and load its bundle artifact directly."""
-    import mlflow  # mlflow-skinny is enough: registry lookups + artifact download
-    from mlflow.tracking import MlflowClient
+    from fraudshield.mlflow_utils import client, download_model_version  # mlflow-skinny suffices
 
     if not uri.startswith("models:/") or "@" not in uri:
         raise ModelLoadError(f"expected models:/<name>@<alias>, got {uri}")
     name, model_alias = uri.removeprefix("models:/").split("@", 1)
-    client = MlflowClient(tracking_uri=tracking_uri)
     try:
-        mv = client.get_model_version_by_alias(name, model_alias)
+        mv = client(tracking_uri).get_model_version_by_alias(name, model_alias)
     except Exception as e:
         raise ModelLoadError(f"cannot resolve {uri}: {e}") from e
-    local = Path(
-        mlflow.artifacts.download_artifacts(
-            artifact_uri=f"models:/{name}/{mv.version}", tracking_uri=tracking_uri
-        )
-    )
-    slot = _load_bundle_dir(local / "artifacts" / "bundle", alias)
+    local = download_model_version(tracking_uri, name, str(mv.version))
+    try:
+        bundle_dir = find_bundle_dir(local)
+    except (FileNotFoundError, ValueError) as e:
+        raise ModelLoadError(f"{uri} v{mv.version}: {e}") from e
+    slot = _load_bundle_dir(bundle_dir, alias)
     return ModelSlot(alias, str(mv.version), slot.bundle)
 
 
@@ -71,6 +69,7 @@ class ModelManager:
         self.settings = settings
         self.feature_set: FeatureSet = feature_set_for(settings, settings.serving.dataset)
         self._slots: tuple[ModelSlot, ModelSlot | None] | None = None
+        self.canary_pct: int = settings.serving.canary_pct  # changed at runtime via /admin/canary
 
     @property
     def champion(self) -> ModelSlot | None:
@@ -129,7 +128,7 @@ class ModelManager:
         if slots is None:
             return None
         champion, challenger = slots
-        pct = self.settings.serving.canary_pct
+        pct = self.canary_pct
         if challenger is not None and pct > 0 and canary_bucket(uid) < pct:
             return challenger
         return champion

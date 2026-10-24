@@ -239,3 +239,19 @@ def test_broadcaster_drops_oldest_for_slow_clients() -> None:
     assert [q.get_nowait()["i"], q.get_nowait()["i"]] == [3, 4]
     b.unsubscribe(q)
     assert b.n_subscribers == 0
+
+
+@pytest.mark.unit
+def test_store_is_pinged_at_startup(bundle_dir: Path, tmp_path: Path) -> None:
+    """Regression: the pool must be warm before the first request (cold Redis connect > 10 ms)."""
+    app, store = _app(tmp_path, bundle_dir)
+    calls: list[str] = []
+    original = store.ping
+
+    async def ping() -> bool:
+        calls.append("ping")
+        return await original()
+
+    store.ping = ping  # type: ignore[method-assign]
+    with TestClient(app):
+        assert calls == ["ping"]

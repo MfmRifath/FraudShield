@@ -30,6 +30,20 @@ Variant = Literal["full", "degraded"]
 FloatArray = npt.NDArray[np.float64]
 
 
+def find_bundle_dir(model_dir: Path) -> Path:
+    """Locate the bundle inside a downloaded MLflow pyfunc model directory.
+
+    MLflow stores a pyfunc artifact under the *source directory's name* (``artifacts/<name>``),
+    so the path is not fixed; search for ``bundle.json`` instead of assuming ``artifacts/bundle``.
+    """
+    found = sorted(model_dir.rglob("bundle.json"))
+    if not found:
+        raise FileNotFoundError(f"no bundle.json under {model_dir}")
+    if len(found) > 1:
+        raise ValueError(f"several bundles under {model_dir}: {found}")
+    return found[0].parent
+
+
 class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

@@ -31,7 +31,13 @@ from fraudshield.serving.events import Broadcaster, MemorySink, Publisher, Sink
 from fraudshield.serving.kafka_sink import KafkaSink
 from fraudshield.serving.metrics import ServingMetrics
 from fraudshield.serving.models import ModelLoadError, ModelManager
-from fraudshield.serving.schemas import LabelRequest, ModelInfo, ScoreRequest, ScoreResponse
+from fraudshield.serving.schemas import (
+    CanaryRequest,
+    LabelRequest,
+    ModelInfo,
+    ScoreRequest,
+    ScoreResponse,
+)
 from fraudshield.serving.scorer import ReviewCapacity, ScoringService
 from fraudshield.training.costs import CostConfig
 
@@ -91,6 +97,10 @@ def create_app(
             fstore = RedisFeatureStore.from_url(spec, st_cfg.redis_url, st_cfg.redis_timeout_s)
         else:
             fstore = InMemoryFeatureStore(spec)
+        # Open the store's connection pool before serving: otherwise the first /score after a
+        # (re)start pays connection setup inside its 10 ms feature budget and gets degraded.
+        if not await fstore.ping():
+            log.warning("feature store not reachable at startup; /score will use fallbacks")
         if sink is not None:
             out_sink: Sink = sink
         elif srv.publisher == "kafka":
@@ -141,19 +151,33 @@ def create_app(
     async def model_info(st: StateDep) -> ModelInfo:
         v = st.models.versions()
         return ModelInfo(champion=v["champion"], challenger=v["challenger"],
-                         canary_pct=st.settings.serving.canary_pct, dataset=st.settings.serving.dataset)  # fmt: skip
+                         canary_pct=st.models.canary_pct, dataset=st.settings.serving.dataset)  # fmt: skip
+
+    def require_admin(st: AppState, x_admin_token: str | None) -> None:
+        token = st.settings.serving.admin_token
+        if token is None:
+            raise HTTPException(403, "admin disabled: FRAUDSHIELD_SERVING__ADMIN_TOKEN not set")
+        if x_admin_token is None or not secrets.compare_digest(
+            x_admin_token, token.get_secret_value()
+        ):
+            raise HTTPException(401, "invalid admin token")
+
+    @app.post("/admin/canary")
+    async def set_canary(
+        body: CanaryRequest, st: StateDep, x_admin_token: Annotated[str | None, Header()] = None
+    ) -> ModelInfo:
+        require_admin(st, x_admin_token)
+        if body.pct > 0 and st.models.challenger is None:
+            raise HTTPException(409, "no @challenger loaded: cannot route traffic to it")
+        st.models.canary_pct = body.pct
+        log.info("canary set to %d%%", body.pct)
+        return await model_info(st)
 
     @app.post("/admin/reload")
     async def reload(
         st: StateDep, x_admin_token: Annotated[str | None, Header()] = None
     ) -> dict[str, Any]:
-        token = st.settings.serving.admin_token
-        if token is None:
-            raise HTTPException(403, "reload disabled: FRAUDSHIELD_SERVING__ADMIN_TOKEN not set")
-        if x_admin_token is None or not secrets.compare_digest(
-            x_admin_token, token.get_secret_value()
-        ):
-            raise HTTPException(401, "invalid admin token")
+        require_admin(st, x_admin_token)
         try:
             versions = await asyncio.to_thread(st.models.reload)
         except (ModelLoadError, OSError) as e:
