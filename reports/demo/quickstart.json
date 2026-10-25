@@ -1,0 +1,27 @@
+{
+ "generated_at": "2026-10-25T04:27:48+00:00",
+ "readme_commands": [
+  "git clone https://github.com/<owner>/fraudshield.git && cd fraudshield",
+  "docker compose -f compose.demo.yml up -d --build --wait"
+ ],
+ "timings_s": {
+  "clone_s": 0.3,
+  "cold_build_s": 168.4,
+  "start_until_healthy_s": 8.2
+ },
+ "total_s": 176.9,
+ "under_10_min": true,
+ "cold_build": true,
+ "checks": {
+  "ui_served": true,
+  "api_ready": true,
+  "api_docs": true,
+  "decisions_arriving": true
+ },
+ "base_images_mib": {
+  "node:24.21.0-alpine": 59,
+  "ghcr.io/astral-sh/uv:0.12.23-python3.12-trixie-slim": null,
+  "python:3.12.15-slim-trixie": 42
+ },
+ "machine": "Darwin arm64, Docker 29.7.2"
+}

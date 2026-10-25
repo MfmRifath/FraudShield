@@ -122,6 +122,12 @@ def ops_rows(reports: Path) -> list[Row]:
                        f"{demo['peak_mem_mib']:.0f} MiB at {demo['rate_per_s']:.0f} tx/s "
                        f"for {demo['minutes']:.0f} min (limit 1,024 MiB)",
                        "reports/demo/demo-check.md"))  # fmt: skip
+    qs = _load(reports / "demo" / "quickstart.json")
+    if qs is not None and all(qs["checks"].values()):
+        build = "cold build" if qs.get("cold_build") else "cached build"
+        out.append(Row("Deployment", "README quickstart: fresh clone to a working demo",
+                       f"{qs['total_s'] / 60:.1f} min ({build}; base images cached)",
+                       "reports/demo/quickstart.md"))  # fmt: skip
     return out
 
 
