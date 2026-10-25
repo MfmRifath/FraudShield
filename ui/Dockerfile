@@ -7,7 +7,7 @@ COPY tsconfig.json vite.config.ts index.html ./
 COPY src ./src
 RUN npm run build
 
-FROM nginx:1.30.5-alpine
+FROM nginx:1.31.0-alpine
 ENV FRAUDSHIELD_API_UPSTREAM=api:8000 \
     NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     NGINX_ENVSUBST_FILTER=^(FRAUDSHIELD_|NGINX_LOCAL_RESOLVERS)
