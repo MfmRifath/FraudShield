@@ -1,0 +1,16 @@
+{
+  "created_at": "2026-10-25T09:26:49+00:00",
+  "cv_mean_pr_auc": 0.5700071592274419,
+  "feature_set_hash": "4c0651a49f1030c36de0e16889604902f4099b4de59780a4f0b53c3182535bad",
+  "n_trials": 40,
+  "num_boost_round": 705,
+  "params": {
+    "bagging_fraction": 0.9709385052947308,
+    "feature_fraction": 0.4792273809896883,
+    "lambda_l2": 0.012797246014796608,
+    "learning_rate": 0.012566183844341626,
+    "min_child_samples": 21,
+    "num_leaves": 153,
+    "scale_pos_weight": 1.522987095349506
+  }
+}

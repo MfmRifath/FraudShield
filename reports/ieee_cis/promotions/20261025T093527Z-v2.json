@@ -1,0 +1,43 @@
+{
+  "passed": false,
+  "checks": [
+    {
+      "name": "pr_auc",
+      "passed": true,
+      "value": 0.5006531597024722,
+      "threshold": null,
+      "detail": "no champion (bootstrap)"
+    },
+    {
+      "name": "net_savings",
+      "passed": true,
+      "value": 293049.84225000005,
+      "threshold": null,
+      "detail": "no champion (bootstrap)"
+    },
+    {
+      "name": "latency",
+      "passed": false,
+      "value": 24.663214901011088,
+      "threshold": 5.0,
+      "detail": "single-row p95 over 500 rows (ms)"
+    },
+    {
+      "name": "parity",
+      "passed": true,
+      "value": 1.8189894035458565e-12,
+      "threshold": 1e-06,
+      "detail": "online vs offline on 2000 events"
+    }
+  ],
+  "comparison": {
+    "challenger": {
+      "pr_auc": 0.5006531597024722,
+      "net_savings": 293049.84225000005,
+      "n_review": 5000.0,
+      "n_block": 4170.0
+    }
+  },
+  "shadow": {},
+  "promoted": false
+}
