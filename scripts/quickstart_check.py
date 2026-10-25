@@ -65,8 +65,13 @@ def localise(cmds: list[str], repo: Path) -> list[str]:
 
 
 def _sh(cmd: str, cwd: Path, env: dict[str, str]) -> float:
+    """Run ``cmd``; on failure show the end of its output (the build log says why)."""
     t = time.monotonic()
-    subprocess.run(["bash", "-euo", "pipefail", "-c", cmd], cwd=cwd, env=env, check=True)  # noqa: S603, S607
+    p = subprocess.run(["bash", "-euo", "pipefail", "-c", cmd], cwd=cwd, env=env,  # noqa: S603, S607
+                       capture_output=True, text=True, check=False)  # fmt: skip
+    if p.returncode != 0:
+        tail = "\n".join((p.stdout + p.stderr).splitlines()[-40:])
+        raise SystemExit(f"step failed ({p.returncode}): {cmd}\n{tail}")
     return time.monotonic() - t
 
 
@@ -102,7 +107,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ]
         if args.cold:
             timings["cold_build_s"] = _sh(
-                "docker compose -f compose.demo.yml build --no-cache --quiet", clone, env
+                "docker compose --progress plain -f compose.demo.yml build --no-cache", clone, env
             )
         timings["start_until_healthy_s"] = _sh(" && ".join(tail_cmds + rest), clone, env)
         first_scored = _scored(base)
