@@ -54,6 +54,9 @@ ui/node_modules/
 ui/dist/
 ui/.vite/
 
+# ---- Personal study material (local only)
+docs/Learnings/
+
 # ---- OS / editors
 .DS_Store
 .idea/
