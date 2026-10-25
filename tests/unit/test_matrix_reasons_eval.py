@@ -142,3 +142,23 @@ def test_evaluate_comparison_and_sweep() -> None:
     assert sweep.height == 5 * 3
     one = sweep.filter((pl.col("parameter") == "analyst_cost") & (pl.col("factor") == 1.0))
     assert one["total_cost"][0] == pytest.approx(ev.dollars["total_cost"])
+
+
+@pytest.mark.unit
+def test_ranking_metrics_use_raw_scores_not_isotonic_ties() -> None:
+    """Isotonic calibration merges scores into ties; ranking must be measured on the raw score."""
+    from fraudshield.training.calibrate import fit_calibrator
+    from fraudshield.training.evaluate import ranking_metrics
+
+    rng = np.random.default_rng(3)
+    n = 20_000
+    y = (rng.random(n) < 0.05).astype(np.int8)
+    raw = y * 1.5 + rng.normal(size=n)  # informative, all distinct
+    cal = fit_calibrator(raw[: n // 2], y[: n // 2], platt_below_positives=10)
+    p = cal.apply(raw[n // 2 :])
+    yt, rt = y[n // 2 :], raw[n // 2 :]
+    assert len(np.unique(p)) < len(np.unique(rt)) / 10  # isotonic plateaus
+    on_p, on_raw = ranking_metrics(yt, p), ranking_metrics(yt, p, rt)
+    assert on_raw["pr_auc"] > on_p["pr_auc"]  # ties understate ranking quality
+    assert on_raw["recall_at_fpr_0.1pct"] >= on_p["recall_at_fpr_0.1pct"]
+    assert (on_raw["brier"], on_raw["ece"]) == (on_p["brier"], on_p["ece"])  # calibration: on p

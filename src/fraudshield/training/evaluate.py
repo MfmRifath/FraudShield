@@ -97,18 +97,28 @@ def card_precision_at_k(
     return float(daily["precision"].mean()) if daily.height else 0.0  # type: ignore[arg-type]
 
 
-def ranking_metrics(y: npt.ArrayLike, p: npt.ArrayLike) -> dict[str, float]:
+def ranking_metrics(
+    y: npt.ArrayLike, p: npt.ArrayLike, scores: npt.ArrayLike | None = None
+) -> dict[str, float]:
+    """Ranking metrics on ``scores`` (default ``p``); Brier and ECE on the probabilities ``p``.
+
+    Pass the raw model score as ``scores``: isotonic calibration is a step function, so it
+    merges distinct scores into ties (tens of thousands of values into ~100 levels on IEEE-CIS)
+    and understates PR-AUC and recall at a fixed false-positive rate. The order it keeps is
+    the raw score's order, so ranking quality is measured there.
+    """
     t = np.asarray(y)
+    s = p if scores is None else scores
     out = {
         "n": float(t.size),
         "n_pos": float(t.sum()),
         "base_rate": float(t.mean()) if t.size else 0.0,
     }
     if 0 < t.sum() < t.size:
-        out["pr_auc"] = float(average_precision_score(t, p))
-        out["roc_auc"] = float(roc_auc_score(t, p))
+        out["pr_auc"] = float(average_precision_score(t, s))
+        out["roc_auc"] = float(roc_auc_score(t, s))
         for f in FPR_TARGETS:
-            out[f"recall_at_fpr_{f * 100:g}pct"] = recall_at_fpr(t, p, f)
+            out[f"recall_at_fpr_{f * 100:g}pct"] = recall_at_fpr(t, s, f)
     out["brier"] = float(brier_score_loss(t, np.clip(np.asarray(p, dtype=np.float64), 0, 1)))
     out["ece"] = expected_calibration_error(t, p)
     return out
@@ -129,13 +139,19 @@ def evaluate(
     decisions: npt.NDArray[np.str_],
     costs: CostConfig,
     k: int = 100,
+    scores: FloatArray | None = None,
 ) -> ModelEval:
-    """``test`` needs columns label, amount, day, uid, is_new_uid."""
+    """``test`` needs columns label, amount, day, uid, is_new_uid.
+
+    ``p`` = calibrated probabilities (calibration metrics; ``decisions`` come from them);
+    ``scores`` = the raw model score for ranking metrics (see ``ranking_metrics``).
+    """
     y = test["label"].to_numpy()
     amount = test["amount"].to_numpy()
-    metrics = ranking_metrics(y, p)
+    s = p if scores is None else scores
+    metrics = ranking_metrics(y, p, s)
     metrics[f"card_precision_at_{k}"] = card_precision_at_k(
-        test["day"].to_numpy(), test["uid"].to_numpy(), p, y, k
+        test["day"].to_numpy(), test["uid"].to_numpy(), s, y, k
     )
     dollars = dollar_summary(decisions, y, amount, costs)
     dollars["approve_all_cost"] = approve_all_cost(y, amount, costs)
@@ -146,7 +162,7 @@ def evaluate(
         ("known_uid", ~test["is_new_uid"].to_numpy()),
     ):
         if mask.any():
-            segments[seg] = ranking_metrics(y[mask], p[mask]) | {
+            segments[seg] = ranking_metrics(y[mask], p[mask], s[mask]) | {
                 "total_cost": dollar_summary(decisions[mask], y[mask], amount[mask], costs)[
                     "total_cost"
                 ]

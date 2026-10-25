@@ -217,14 +217,15 @@ def run_training(
             ("logistic", logistic, x),
         )
     }
-    test_p = {
-        name: calibrators[name].apply(raw(m, "test", cols))
+    test_raw = {
+        name: raw(m, "test", cols)
         for name, m, cols in (
             ("lgbm_full", full, x),
             ("lgbm_degraded", degraded, xr),
             ("logistic", logistic, x),
         )
     }
+    test_p = {name: calibrators[name].apply(s) for name, s in test_raw.items()}
 
     costs = CostConfig.load(settings.paths.costs)
     rules = RuleSet.load(settings.paths.rules)
@@ -233,7 +234,14 @@ def run_training(
     evals: list[ModelEval] = [evaluate("rules_only", te, rule_score, rule_decisions, costs)]
     for name in ("logistic", "lgbm_degraded", "lgbm_full"):
         evals.append(
-            evaluate(name, te, test_p[name], decide(test_p[name], amount, day, costs), costs)
+            evaluate(
+                name,
+                te,
+                test_p[name],
+                decide(test_p[name], amount, day, costs),
+                costs,
+                scores=test_raw[name],
+            )  # ranking on raw scores, $ on calibrated
         )
     add_savings_vs(evals, "rules_only")
     comparison = comparison_table(evals)

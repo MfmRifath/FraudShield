@@ -168,6 +168,13 @@ def test_gate_passes_for_better_challenger(gate_inputs: dict[str, Any]) -> None:
     assert {c.name for c in res.checks} == {"pr_auc", "net_savings", "latency", "parity"}
     assert 0.0 <= res.shadow["decision_agreement"] <= 1.0
     assert "Gate: PASSED" in res.to_markdown()
+    # the gate times predict only (spec); explanations are measured and reported, not gated
+    lat = next(c for c in res.checks if c.name == "latency")
+    assert lat.value is not None
+    assert (
+        res.info["p95_with_3_reason_codes_ms"] > 0
+    )  # (no timing comparison: noisy on tiny models)
+    assert "p95_with_3_reason_codes_ms" in res.to_markdown()
 
 
 @pytest.mark.unit

@@ -2,7 +2,10 @@
 
 1. ``pr_auc``: challenger PR-AUC >= champion PR-AUC - tolerance (test window).
 2. ``net_savings``: challenger net savings vs approve-all >= champion's (same costs/capacity).
-3. ``latency``: single-row p95 of ``ModelBundle.score_one`` <= max ms.
+3. ``latency``: single-row p95 *predict* (features -> calibrated probability, the spec's gate)
+   <= max ms. The p95 with the three reason codes (TreeSHAP ``pred_contrib``, which grows with
+   trees x leaves) is measured too and reported, not gated: it is a serving-capacity question
+   answered by the load test (ADR-0015).
 4. ``parity``: the challenger was trained on the feature set serving computes, and the online
    path reproduces offline features (max |diff| < tolerance) on a canonical sample.
 
@@ -41,6 +44,7 @@ class GateResult:
     checks: list[Check]
     comparison: dict[str, dict[str, float]]
     shadow: dict[str, float] = field(default_factory=dict)
+    info: dict[str, float] = field(default_factory=dict)  # measured, not gating
 
     @property
     def passed(self) -> bool:
@@ -52,6 +56,7 @@ class GateResult:
             "checks": [asdict(c) for c in self.checks],
             "comparison": self.comparison,
             "shadow": self.shadow,
+            "info": self.info,
         }
 
     def to_markdown(self) -> str:
@@ -64,6 +69,7 @@ class GateResult:
             for m, v in self.comparison.items()
         )
         sh = ", ".join(f"{k} = {_f(v)}" for k, v in self.shadow.items()) or "n/a"
+        inf = ", ".join(f"{k} = {_f(v)}" for k, v in self.info.items()) or "n/a"
         return f"""**Gate: {"PASSED" if self.passed else "FAILED"}**
 
 | check | result | value | threshold | detail |
@@ -75,6 +81,8 @@ class GateResult:
 {cmp}
 
 Shadow comparison (test window, not gating): {sh}
+
+Measured, not gating: {inf}
 """
 
 
@@ -91,21 +99,23 @@ def _f(v: float | None) -> str:
 def _window_metrics(
     bundle: ModelBundle, test: pl.DataFrame, costs: CostConfig
 ) -> tuple[dict[str, float], np.ndarray, np.ndarray]:
+    raw = bundle.raw_scores(bundle.matrix(test))
     p = bundle.predict_proba(test)
     d = decide(p, test["amount"].to_numpy(), test["day"].to_numpy(), costs)
-    ev = evaluate("m", test, p, d, costs)
+    ev = evaluate("m", test, p, d, costs, scores=raw)  # PR-AUC on raw scores (no isotonic ties)
     m = {"pr_auc": ev.metrics.get("pr_auc", float("nan")), "net_savings": ev.dollars["net_savings_vs_approve_all"],
          "n_review": ev.dollars["n_review"], "n_block": ev.dollars["n_block"]}  # fmt: skip
     return m, p, d
 
 
-def single_row_p95_ms(bundle: ModelBundle, rows: list[dict[str, Any]]) -> float:
+def single_row_p95_ms(bundle: ModelBundle, rows: list[dict[str, Any]], n_reasons: int = 0) -> float:
+    """p95 of one ``score_one`` call; ``n_reasons=0`` = predict + calibrate only."""
     for r in rows[:20]:  # warm-up
-        bundle.score_one(r)
+        bundle.score_one(r, n_reasons=n_reasons)
     times = []
     for r in rows:
         t0 = time.perf_counter()
-        bundle.score_one(r)
+        bundle.score_one(r, n_reasons=n_reasons)
         times.append((time.perf_counter() - t0) * 1e3)
     return float(np.percentile(times, 95))
 
@@ -145,8 +155,9 @@ def run_gate(
         p95 <= cfg.max_single_row_p95_ms,
         p95,
         cfg.max_single_row_p95_ms,
-        f"single-row p95 over {len(rows)} rows (ms)",
+        f"single-row predict p95 over {len(rows)} rows (ms)",
     )
+    info = {"p95_with_3_reason_codes_ms": single_row_p95_ms(challenger, rows, n_reasons=3)}
 
     trained_on = challenger.spec.metadata.get("feature_set_hash")
     if trained_on != serving_fs.spec_hash():
@@ -166,4 +177,4 @@ def run_gate(
             cfg.parity_tolerance,
             f"online vs offline on {min(cfg.parity_rows, parity_canonical.height)} events",
         )
-    return GateResult([pr, sav, lat, par], comparison, shadow)
+    return GateResult([pr, sav, lat, par], comparison, shadow, info)
