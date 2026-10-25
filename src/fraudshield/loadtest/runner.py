@@ -251,9 +251,9 @@ def run_all(cfg: RunConfig, scenarios: list[Scenario]) -> dict[str, Any]:
     for sc in scenarios:
         log.info("scenario %s: %d s at %.0f rps target", sc.name, cfg.duration_s, cfg.target_rps)
         r = run_scenario(cfg, sc, cfg.duration_s)
-        (raw / f"{sc.name}_server.json").write_text(json.dumps(r.as_json(), indent=1))
+        (raw / f"{sc.name}_server.json").write_text(json.dumps(r.as_json(), indent=1) + "\n")
         runs[sc.name] = r
     meta = {"config": {k: str(v) if isinstance(v, Path) else v for k, v in asdict(cfg).items()},
             "environment": environment(cfg), "scenarios": [s.name for s in scenarios]}  # fmt: skip
-    (raw / "run.json").write_text(json.dumps(meta, indent=1))
+    (raw / "run.json").write_text(json.dumps(meta, indent=1) + "\n")
     return meta

@@ -1,6 +1,6 @@
 # Load test
 
-Generated 2026-10-24T14:41:59+00:00 by `make loadtest` (`python -m fraudshield.loadtest`). Rerun it to refresh every number on this page.
+Generated 2026-10-25T09:53:04+00:00 by `make loadtest` (`python -m fraudshield.loadtest`). Rerun it to refresh every number on this page.
 
 - **Load:** 50 Locust users x 2.0 req/s (Poisson arrivals) = **100 req/s target**, 60 s per scenario after a 30 s warm-up. 70 % of requests come from returning cards, the rest from never-seen cards; the API stamps server time.
 - **Model:** `synthetic-500x63`, 500 trees (mean 63.0 leaves/tree), 48 features. A *synthetic* bundle of production-like size: it measures the serving path, not model quality.

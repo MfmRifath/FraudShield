@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-10-24T14:41:59+00:00",
+ "generated_at": "2026-10-25T09:53:04+00:00",
  "config": {
   "users": 50,
   "rps_per_user": 2.0,
@@ -32,6 +32,9 @@
  },
  "model": {
   "model_version": "synthetic-500x63",
+  "dataset": "synthetic",
+  "created_at": "synthetic",
+  "git_sha": null,
   "trees_full": 500,
   "mean_leaves_per_tree": 63.0,
   "features_full": 48
