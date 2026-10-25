@@ -12,6 +12,11 @@ PYTEST_ARGS ?=
 DATASET ?=
 DS_ARG := $(if $(DATASET),--dataset $(DATASET))
 
+# Local secrets (git-ignored .env, KEY=value lines). Only the Kaggle token is exported, for
+# `make data`; a value in .env overrides an environment variable of the same name.
+-include .env
+export KAGGLE_API_TOKEN
+
 define not_yet
 	@echo "make $@: not implemented yet (planned for $(1), see PLAN.md)" >&2; exit 1
 endef
