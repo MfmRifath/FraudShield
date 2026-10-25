@@ -136,7 +136,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "under_10_min": total < 600,
         "cold_build": args.cold,
         "checks": checks,
-        "base_images_mib": {i: round((image_size_bytes(i) or 0) / 2**20) for i in BASE_IMAGES},
+        "base_images_mib": {
+            i: None if (b := image_size_bytes(i)) is None else round(b / 2**20) for i in BASE_IMAGES
+        },
         "machine": f"{platform.system()} {platform.machine()}, Docker {ver}",
     }
 
@@ -146,7 +148,10 @@ def to_markdown(r: dict[str, Any]) -> str:
     ok = r["under_10_min"] and all(r["checks"].values())
     cmds = "\n".join(r["readme_commands"])
     checks = "\n".join(f"| {k} | {'pass' if v else 'FAIL'} |" for k, v in r["checks"].items())
-    bases = ", ".join(f"`{k}` {v} MiB" for k, v in r["base_images_mib"].items())
+    bases = ", ".join(
+        f"`{k}` {'size unknown (pulled by BuildKit, not in the image store)' if v is None else f'{v} MiB'}"
+        for k, v in r["base_images_mib"].items()
+    )
     return f"""# README quickstart check
 
 Generated {r["generated_at"]} by `make quickstart-check` (`scripts/quickstart_check.py`) on {r["machine"]}.

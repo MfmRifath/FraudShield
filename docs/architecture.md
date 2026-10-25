@@ -34,7 +34,7 @@ sequenceDiagram
   A->>R: one pipelined fetch: card history, distinct-index counts, seen flags, TE counts
   Note over A,R: 10 ms budget + failure-rate breaker → on miss: degraded path
   R-->>A: EntityState
-  A->>A: compute_online(row, state) → features (pure; same specs as offline)
+  A->>A: compute_online(row, state) → features (pure, same specs as offline)
   A->>A: hard rules (configs/rules.yaml)
   A->>T: LightGBM full (or request-only) + calibrator + pred_contrib (GIL released)
   T-->>A: probability, top-3 reason groups
