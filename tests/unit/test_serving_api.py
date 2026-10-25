@@ -291,3 +291,14 @@ def test_model_threads_match_inline_scoring(
     for a, b in zip(threaded, sequential, strict=True):
         assert (a.probability, a.decision) == (b.probability, b.decision)
         assert [x.code for x in a.reason_codes] == [x.code for x in b.reason_codes]
+
+
+@pytest.mark.unit
+def test_missing_challenger_bundle_does_not_stop_the_champion(
+    bundle_dir: Path, tmp_path: Path
+) -> None:
+    """Regression: a configured but absent challenger dir used to fail the whole model load."""
+    s = serving_settings(tmp_path, bundle_dir=bundle_dir, challenger_bundle_dir=tmp_path / "nope")
+    with TestClient(create_app(s)) as c:
+        assert c.get("/ready").status_code == 200
+        assert c.get("/model").json()["challenger"] is None

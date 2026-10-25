@@ -100,11 +100,12 @@ class ModelManager:
         s = self.settings.serving
         if s.model_source == "bundle":
             champion = _load_bundle_dir(s.bundle_dir, "champion")
-            challenger = (
-                _load_bundle_dir(s.challenger_bundle_dir, "challenger")
-                if s.load_challenger and s.challenger_bundle_dir is not None
-                else None
-            )
+            challenger = None
+            if s.load_challenger and s.challenger_bundle_dir is not None:
+                try:  # optional, as with MLflow: a missing challenger must not stop the champion
+                    challenger = _load_bundle_dir(s.challenger_bundle_dir, "challenger")
+                except ModelLoadError as e:
+                    log.warning("no challenger loaded: %s", e)
         else:
             uri = self.settings.training.mlflow_tracking_uri
             champion = _load_mlflow(s.champion_uri, "champion", uri)
