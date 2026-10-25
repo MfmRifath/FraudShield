@@ -1,15 +1,15 @@
 {
- "generated_at": "2026-10-25T04:27:48+00:00",
+ "generated_at": "2026-10-25T10:39:10+00:00",
  "readme_commands": [
-  "git clone https://github.com/<owner>/fraudshield.git && cd fraudshield",
+  "git clone https://github.com/MfmRifath/FraudShield.git && cd FraudShield",
   "docker compose -f compose.demo.yml up -d --build --wait"
  ],
  "timings_s": {
-  "clone_s": 0.3,
-  "cold_build_s": 168.4,
-  "start_until_healthy_s": 8.2
+  "clone_s": 0.4,
+  "cold_build_s": 244.5,
+  "start_until_healthy_s": 8.4
  },
- "total_s": 176.9,
+ "total_s": 253.3,
  "under_10_min": true,
  "cold_build": true,
  "checks": {

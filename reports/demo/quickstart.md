@@ -1,22 +1,22 @@
 # README quickstart check
 
-Generated 2026-10-25T04:27:48+00:00 by `make quickstart-check` (`scripts/quickstart_check.py`) on Darwin arm64, Docker 29.7.2.
-**Passed: 2.9 minutes from clone to a working demo** (goal: under 10).
+Generated 2026-10-25T10:39:10+00:00 by `make quickstart-check` (`scripts/quickstart_check.py`) on Darwin arm64, Docker 29.7.2.
+**Passed: 4.2 minutes from clone to a working demo** (goal: under 10).
 
 The script ran the README's quickstart commands in a fresh clone, building the image
 from scratch (`--no-cache`):
 
 ```bash
-git clone https://github.com/<owner>/fraudshield.git && cd fraudshield
+git clone https://github.com/MfmRifath/FraudShield.git && cd FraudShield
 docker compose -f compose.demo.yml up -d --build --wait
 ```
 
 | Step | Seconds |
 |---|---:|
 | clone | 0 |
-| build the demo image (UI, Python deps, demo model) | 168 |
+| build the demo image (UI, Python deps, demo model) | 244 |
 | start until healthy | 8 |
-| **total** | **177** |
+| **total** | **253** |
 
 | Check | Result |
 |---|---|
