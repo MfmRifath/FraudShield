@@ -11,6 +11,9 @@ PYTEST_ARGS ?=
 # Dataset for data/features/eda targets; empty = `dataset` in the active config (ieee_cis).
 DATASET ?=
 DS_ARG := $(if $(DATASET),--dataset $(DATASET))
+# One MLflow registry entry per dataset, so @champion / @challenger never mix datasets:
+# IEEE-CIS (primary) is `fraudshield`, Sparkov is `fraudshield-sparkov`.
+REG := $(if $(filter sparkov,$(DATASET)),FRAUDSHIELD_TRAINING__REGISTERED_MODEL=fraudshield-sparkov)
 
 # Local secrets (git-ignored .env, KEY=value lines). Only the Kaggle token is exported, for
 # `make data`; a value in .env overrides an environment variable of the same name.
@@ -131,7 +134,7 @@ eda: ## Execute notebooks/01_eda.ipynb in place (needs `make features` for DATAS
 
 .PHONY: train
 train: ## Train baselines + LightGBM, evaluate on test, log to MLflow, set @challenger
-	$(RUN) fraudshield train $(DS_ARG)
+	$(REG) $(RUN) fraudshield train $(DS_ARG)
 
 .PHONY: tune
 tune: ## Optuna tuning (rolling-origin CV) -> configs/tuned/<ds>.json
@@ -139,11 +142,11 @@ tune: ## Optuna tuning (rolling-origin CV) -> configs/tuned/<ds>.json
 
 .PHONY: retrain
 retrain: ## Training set as of now -> train -> register @challenger (real data: deferred)
-	$(RUN) fraudshield retrain $(DS_ARG)
+	$(REG) $(RUN) fraudshield retrain $(DS_ARG)
 
 .PHONY: promote
 promote: ## Gate @challenger vs @champion (PR-AUC, savings, latency, parity); move @champion if it passes
-	$(RUN) fraudshield promote $(DS_ARG)
+	$(REG) $(RUN) fraudshield promote $(DS_ARG)
 
 .PHONY: docs
 docs: ## Render docs/model_card.md from reports/<ds>/metrics.json, then the README metrics
@@ -224,7 +227,7 @@ mlops-demo-stack: ## Same loop as a Prefect flow run on the mlops stack (MLflow 
 
 .PHONY: rollback
 rollback: ## Move @champion back to the previous version (and hot-reload the API)
-	$(RUN) fraudshield rollback
+	$(REG) $(RUN) fraudshield rollback
 
 .PHONY: down
 down: ## Stop the stack (keeps volumes; `make down-v` also deletes them)
