@@ -4,8 +4,8 @@
 
 ## Current phase
 
-**Phase 9: Portfolio polish: complete, awaiting review. All phases (0-9) are coded.** Next: the "Deferred real-data runs" in PLAN.md, done together with the user (rule 9). Real-data DoD items are deferred (rule 9).
-IEEE-CIS raw data is **not downloaded yet** (needs the user's Kaggle token + accepted competition rules). Sparkov was downloaded and built in Phase 1.
+**All phases (0-9) coded; real-data runs done (2026-10-25).** IEEE-CIS champion v2 (`fraudshield`), Sparkov champion v1 (`fraudshield-sparkov`). Open: demo GIF, GitHub remote (CI/CD never run), serving `@champion` from the MLflow server (see PLAN.md). Real-data DoD items are deferred (rule 9).
+Both datasets are downloaded and built locally (`data/` is git-ignored; manifests are committed). The Kaggle token lives in the git-ignored `.env`, which the Makefile exports.
 
 ## Goal
 
@@ -74,13 +74,15 @@ tests/ unit parity integration fixtures/sparkov_sample.csv (2,000 CC0 rows) orac
 - **Polars 2** (ADR-0007): eager / `collect(engine="in-memory")`; joins `maintain_order="left"`; re-sort on explicit keys; `join_asof(by=)` with `check_sortedness=False`. DuckDB: `SET TimeZone='UTC'`, integers only.
 - **Hashes**: `manifest.frame_content_sha256` (logical), never IPC bytes. **Decision arrays**: `costs.DECISION_DTYPE` ("<U7"), else numpy truncates "approve".
 - **Model artifacts**: `ModelBundle` (no pickles); MLflow pyfunc wraps it. Locate the bundle with `find_bundle_dir` (MLflow stores artifacts under the source dir name). Use `mlflow_utils.client/download_model_version` (pins tracking **and** registry URI; never rely on MLflow globals). Aliases only (`@champion`/`@challenger`); promotions append to the `champion_history` model tag.
-- **Promotion gate** (all must pass): PR-AUC >= champion - 0.005; net savings >= champion; single-row p95 <= 5 ms; feature-set hash matches serving + online/offline parity < 1e-6. Shadow comparison is reported, not gating. `--force` is recorded in the report.
+- **Metrics**: ranking metrics (PR-AUC, ROC, recall@FPR, card precision) on the *raw* model score; Brier/ECE and dollars on the calibrated probability (isotonic ties understate ranking, ADR-0015).
+- **Registry**: one MLflow entry per dataset (`fraudshield` = IEEE-CIS, `fraudshield-sparkov`; Makefile `REG`). Never train a dataset into another's entry.
+- **Promotion gate** (all must pass): PR-AUC >= champion - 0.005; net savings >= champion; single-row *predict* p95 <= 5 ms (with-reasons p95 reported, not gated); feature-set hash matches serving + online/offline parity < 1e-6. Shadow comparison is reported, not gating. `--force` is recorded in the report.
 - **MLflow tracking**: SQLite + local artifacts locally; against a server leave `mlflow_artifact_location` empty (server-side `mlflow-artifacts:/`).
 - **Dependency groups**: core = data + serving (incl. `mlflow-skinny`); `train` = sklearn/optuna/mlflow/pandas/shap/matplotlib; `orchestration` = prefect. Serving must not import train/orchestration libs at module level. API image: `--no-default-groups`; trainer image adds `train` + `orchestration`.
 - **Tests**: markers unit/parity/smoke/integration/mlops/monitoring/ui/slow; strict pytest, `filterwarnings=error` (only narrow, commented third-party ignores). Hypothesis profiles dev/ci; value pools overlap across columns on purpose. Integration tests run in the test container on the compose network with `--namespace` / unique model names (never flush shared state); their stack gets a 100 ms feature budget (`FS_FEATURE_TIMEOUT_MS`), the 10 ms budget is tested by fallback tests + `make loadtest`.
 - **Serving**: never 5xx; feature store pinged at startup (cold connect > 10 ms budget). Breaker is failure-rate based (2 s window); LightGBM runs in `model_threads` (GIL released) so the event loop keeps serving Redis replies. Distinct counts use the last-seen index (`OnlineSpec.distinct`), never event lists. Load-test anything touching the score path (`make loadtest`). Benchmarks report the measured model (trees, mean leaves); synthetic data needs `label_noise` or trees are stumps.
 - **Streaming**: Kafka key = uid on every topic; `transactions.raw` = exact /score body (no labels). Worker logic in plain classes; `run()` only wires Quix (state_dir under /tmp).
-- **Monitoring**: dashboards are generated (`make dashboards`; a test fails if stale or if a query uses an unexported metric). Zero-initialise counter label sets that may stay 0. Drift reference windows must start after the 7-day warm-up. Drift metrics go through `reports/drift/latest.json` (Prefect runs flows in subprocesses). Check rules with `make lint-infra`.
+- **Monitoring**: dashboards are generated (`make dashboards`; a test fails if stale or if a query uses an unexported metric). Zero-initialise counter label sets that may stay 0. Drift reference windows must start after the 7-day warm-up. The PR-AUC check uses its own windows lagged by `performance_lag_days` (labels take up to 7 days). Drift metrics go through `reports/drift/latest.json` (Prefect runs flows in subprocesses). Check rules with `make lint-infra`.
 - **Cases/labels**: every `CaseStore` passes `tests/case_contract.py`. `FRAUDSHIELD_CASES__STORE=postgres` iff the mlops profile is up (Makefile `CASE_STORE`). Analyst labels feed training sets only, never online TE (parity; ADR-0013). Bundles carry `policy_window.parquet` for the simulator.
 - **UI**: npm deps exact (`.npmrc`), each version >= 14 days old when pinned; `make ui-test` (tsc + vitest) before commits touching `ui/`. The browser only calls `/api/*` (Vite proxy in dev, nginx in compose; nginx re-resolves `api` via Docker DNS). Decisions = status colours + text label.
 - **README**: the metrics table between `<!-- metrics:start ... -->` markers is generated (`make readme`; `test_readme.py` fails if stale). The quickstart block between `<!-- quickstart:* -->` markers is executed by `make quickstart-check`; keep it runnable. Mermaid: no `;` inside sequence-diagram messages.
@@ -103,6 +105,7 @@ make up-ui | ui-dev | ui-test | ui-build                          # analyst UI (
 make loadtest | loadtest-bundles                                  # Locust scenarios -> reports/loadtest (stack serves artifacts/loadtest)
 make demo | demo-check | demo-down | up-lite | test-integration-lite   # demo :8088 (< 1 GiB); 8 GB profile
 make readme | quickstart-check                                    # README metrics from reports/; README quickstart timed in a fresh clone
+make loadtest-ieee | drift-real | demo-sparkov                    # real-model load test, real-traffic drift job, demo on the Sparkov champion
 fraudshield canary 10    # route 10 % of uids to @challenger (needs FRAUDSHIELD_SERVING__ADMIN_TOKEN)
 ```
 
@@ -139,4 +142,4 @@ Evidently 0.7 API: `Report([DataDriftPreset(columns=...)]).run(current_data=Data
 0001 stack · 0002 dependency policy · 0003 configuration · 0004 event time/entities · 0005 label delay + TE ·
 0006 feature library + hashes · 0007 Polars 2/DuckDB 2 · 0008 modeling/policy/packaging · 0009 serving ·
 0010 streaming + Quix caps · 0011 MLOps loop, gate, Prefect/FastAPI pin · 0012 monitoring, drift, alerts ·
-0013 analyst UI, case store, label path · [0014](docs/adr/0014-hardening-and-deployment.md) load-test hardening, lite, demo, CD
+0013 analyst UI, case store, label path · 0014 load-test hardening, lite, demo, CD · [0015](docs/adr/0015-real-data-findings.md) real-data findings

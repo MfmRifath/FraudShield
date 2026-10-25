@@ -19,3 +19,4 @@ Status: Proposed | Accepted | Superseded by ADR-NNNN.
 | [0012](0012-monitoring-and-drift.md) | Monitoring, drift detection and alerting | Accepted |
 | [0013](0013-analyst-ui-and-case-store.md) | Analyst UI, case store and the label path | Accepted |
 | [0014](0014-hardening-and-deployment.md) | Hardening found by load testing; lite, demo and delivery | Accepted |
+| [0015](0015-real-data-findings.md) | What the real-data runs changed (metrics, gate, capacity, drift) | Accepted |

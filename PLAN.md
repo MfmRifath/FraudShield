@@ -138,23 +138,23 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 
 ---
 
-## Deferred real-data runs (do together with the user after all phases are coded; CLAUDE.md rule 9)
+## Deferred real-data runs (done with the user on 2026-10-25; CLAUDE.md rule 9)
 
-- [ ] Prereqs: Kaggle token + accepted IEEE-CIS rules; `brew install libomp` (or use Docker)
-- [ ] `make data DATASET=ieee_cis` + `make features DATASET=ieee_cis` + `make features-check DATASET=ieee_cis`; commit `data/manifests/ieee_cis.*.json`
-- [ ] `make features-check DATASET=sparkov` (manifest recorded with pyarrow 26; now 25.0.1 -> expect a version warning only)
-- [ ] `make eda DATASET=ieee_cis` (Phase 1 EDA on the primary dataset)
-- [ ] `make tune` + `make train` for ieee_cis (and sparkov for the demo); commit `configs/tuned/*.json`, `reports/<ds>/*.md|json|png`
-- [ ] `make docs DATASET=ieee_cis` -> `docs/model_card.md` (Phase 2 DoD)
-- [ ] `make up-mlops` + `make retrain promote DATASET=ieee_cis` against the MLflow server, then `FS_MODEL_SOURCE=mlflow make up-mlops` to serve `@champion` (Phase 5 on real data)
-- [ ] Drift job on real served traffic with `FS_RETRAIN_FLOW=retrain-and-promote` (Phase 6 on real data; reference window must start after the 7-day warm-up)
-- [ ] `make loadtest` against the real champion with test-window payloads (Phase 8; `fraudshield.loadtest.payloads.write_payloads` on the real window)
-- [ ] Demo container on the real Sparkov test window (`FRAUDSHIELD_DEMO__WINDOW`) with a real Sparkov bundle
-- [ ] After training: `make docs` (model card + README model rows), `make loadtest`, `make quickstart-check`, record the demo GIF
-- [ ] Policy simulator + UI walkthrough on the real champion (its bundle carries the test-split policy window; Phase 7)
-- [ ] `python scripts/bench_serving.py --bundle artifacts/ieee_cis/bundle` (real-model latency; Phase 3)
-- [ ] `make up` with the real bundle (`FS_BUNDLE_SET=ieee_cis` / MLflow alias) + `make replay SOURCE=canonical DATASET=ieee_cis ARGS="--start ... --end ..."` (Phase 4 on real data; watch feature_timeout fallbacks for heavy email domains)
-
+- [x] Prereqs: Kaggle token (in the git-ignored `.env`, exported by the Makefile) + accepted IEEE-CIS rules; libomp via Homebrew
+- [x] IEEE-CIS data + features (590,540 x 81) + features-check (hash `8eba3284...`); manifests committed
+- [x] Sparkov features-check (matches; pyarrow version warning only)
+- [x] EDA on IEEE-CIS (fraud rate 3.5 % in every split; notebook committed)
+- [x] Tune (40 trials, 2 h 10 min, CV PR-AUC 0.570) + train IEEE-CIS; Sparkov trained with default params (not tuned, ADR-0015); reports committed
+- [x] `make docs DATASET=ieee_cis` -> `docs/model_card.md`; README model rows filled
+- [x] Promote: IEEE-CIS v2 -> `@champion` (`fraudshield`), Sparkov v1 -> `@champion` (`fraudshield-sparkov`); local MLflow (SQLite). The server-backed loop is covered by `make test-integration-mlops` on synthetic data
+- [x] Drift job on real traffic: `make drift-real` (daily detector over the reconstructed served log; found and fixed the always-skipped PR-AUC check, ADR-0015)
+- [x] Load test of the real champion with test-window payloads: `make loadtest-ieee` (50 req/s, 0 failed)
+- [x] Demo on the real Sparkov champion and test window: `make demo-sparkov` (228 MiB peak, `reports/demo-sparkov/`)
+- [x] Policy simulator on the real champion (capacity 0 / 200 / 1,000 per day -> $226k / $293k / $314k savings)
+- [x] Real bundle on the stack (`FS_BUNDLE_SET=ieee_cis FS_DATASET=ieee_cis`, via `make loadtest-ieee`): served features stayed within budget (0.1 % fallbacks)
+- [ ] Real-model in-process benchmark: `scripts/bench_serving.py` builds synthetic payloads, so it cannot drive the IEEE-CIS bundle; the gate (predict 0.15 ms, with reasons 25 ms) and the load test cover it. Teach the benchmark real payloads if a standalone number is wanted
+- [ ] Record the demo GIF (`docs/demo-video-script.md`)
+- [ ] Serve `@champion` from the MLflow *server* (`FS_MODEL_SOURCE=mlflow make up-mlops`): needs the champion registered on the server, not the local SQLite registry
 ---
 
 ## Progress log
@@ -171,3 +171,4 @@ Tick `[x]` only when a test, lint run or script output proves the item. Each pha
 | 2026-10-24 | 7 | Analyst UI. Postgres case store (cases/labels/audit_log, one-transaction labelling, idempotent open; contract test on InMemory + Postgres), card activity timeline (Redis, written by the processor), case context/audit, monitoring summary and policy simulator endpoints (bundles now carry `policy_window.parquet`), React 19 + Vite 8 + TS 7 UI with five pages and F/L/E shortcuts, nginx `ui` profile (:5180; SSE unbuffered; admin/metrics blocked). DoD tested on InMemory and compose Postgres. Found + fixed: the processor crashed on analyst labels (no `label_available_time`) and analyst labels were double-counted in online TE -> they no longer touch online TE (parity with offline; supersedes part of ADR-0010); nginx cached the API's IP across container recreation (502) -> Docker-DNS re-resolution; `test-integration-mlops` selected monitoring tests. Tests: 197 unit/parity/smoke (CI profile), 16 integration (all profiles), 15 vitest. ADR-0013. |
 | 2026-10-24 | 8 | Hardening & deploy. Locust load test (`make loadtest`: Poisson arrivals, 70/30 returning/new cards, production-sized synthetic model on the core stack; normal / no reason codes / Redis killed) with report + charts: 100 req/s target, 0 failed requests in all scenarios, fallback share 0.2 % normal, Redis outage absorbed by the degraded model and recovered within seconds. The first trial runs found and fixed: lockstep load generator (-> Poisson), circuit breaker turning stalls into 30 s of degraded scoring (-> failure-rate breaker) and a wedge bug when a half-open trial is cancelled (regression test), distinct counts reading whole email-domain histories (-> exact last-seen index; parity unchanged), `pred_contrib` blocking the event loop (-> LightGBM in a thread pool; GIL released). Single-container demo (`make demo`, 199 MiB peak at 50 tx/s for 3 min, `reports/demo/`), `compose.lite.yml` (~1.65 GiB in use, core ITs pass, Prefect ephemeral API serves schedules), VM override with Caddy TLS + basic auth and no public internal ports, runbook + 2 deploy guides, `cd.yml` (5 multi-arch GHCR images + SSH deploy) and `ct.yml` (not yet run: no remote), SHA-pinned actions + Dependabot. Integration targets run with a 100 ms feature budget (correctness tests). Tests: 218 unit/parity/smoke (CI profile), 16 integration (all profiles) + 5 on lite, 15 vitest. ADR-0014. |
 | 2026-10-25 | 9 | Portfolio polish. README rewritten for a new reader (pitch, demo placeholder, generated headline metrics, 10-minute quickstart, Mermaid architecture, evaluation methodology, full-system table, ADR table, limitations); `fraudshield.readme` fills the metrics from report JSON (model rows say "pending" until the real run; stale-check test); `docs/architecture.md`, `docs/demo-video-script.md`, model card placeholder. Serving benchmark rerun on current code (records `model_threads`; sequential p95 includes the thread handoff). DoD check `make quickstart-check`: README commands in a fresh clone, cold build, 2.9 min to a working demo. Found: the first attempt failed in `uv sync` (likely a transient download error, hidden by `--quiet`) -> the script now keeps and prints build output; a sequence diagram did not parse (`;` in a message). All phases coded; real-data runs next. |
+| 2026-10-25 | real data | IEEE-CIS downloaded, features rebuilt (hash verified), EDA, 2 h 10 min tuning, champion v2: test PR-AUC 0.501, recall 43.9 % at 1 % FPR, net savings $293,050. Sparkov champion: PR-AUC 0.975 (simulated, bursty fraud). Real-model load test 50 req/s, 0 failed (p95 59 ms with reason codes, 5 ms without); real drift job flags the mid-May decline. Found and fixed: ranking metrics understated by isotonic ties (now on raw scores); gate latency timed TreeSHAP instead of predict (spec); Sparkov registered into the IEEE-CIS registry entry (per-dataset names); a missing challenger stopped the champion loading; the daily PR-AUC check could never run (lagged windows). ADR-0015. |

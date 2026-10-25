@@ -29,6 +29,7 @@ Every value below is written by a `make` target into [`reports/`](reports/) and 
 | Serving | Requests on a fallback path under that load (synthetic 500x63 model) | 0.2% | [report.md](reports/loadtest/report.md) |
 | Resilience | Redis killed mid-load (synthetic 500x63 model) | 0 failed requests; degraded scoring, recovered in 2 s after restart | [report.md](reports/loadtest/report.md) |
 | Monitoring | Drift demo (injected fraud ring): detection | 60% of top-20 features drifted, score PSI 0.21, matured PR-AUC -35% → retrain triggered | [demo-summary.md](reports/drift/demo-summary.md) |
+| Monitoring | Daily drift job on the real IEEE-CIS test window (no injection) | 9 of 25 days would retrain (feature drift 3, performance 8, score drift 1) | [daily.md](reports/drift-ieee_cis/daily.md) |
 | Deployment | Single-container demo, peak memory | 199 MiB at 50 tx/s for 3 min (limit 1,024 MiB) | [demo-check.md](reports/demo/demo-check.md) |
 | Deployment | README quickstart: fresh clone to a working demo | 2.9 min (cold build; base images cached) | [quickstart.md](reports/demo/quickstart.md) |
 
@@ -170,8 +171,9 @@ Deployment: [Arm VM behind Caddy (TLS + login)](docs/deploy/arm-vm.md) · [singl
 | [0012](docs/adr/0012-monitoring-and-drift.md) | Drift detection, alerts, dashboards as code |
 | [0013](docs/adr/0013-analyst-ui-and-case-store.md) | Analyst UI, case store, the label path |
 | [0014](docs/adr/0014-hardening-and-deployment.md) | What load testing broke and how it was fixed; lite, demo, delivery |
+| [0015](docs/adr/0015-real-data-findings.md) | What the real-data runs changed: raw-score metrics, gate latency, explanation cost, lagged drift check |
 
-All 14 are indexed in [docs/adr/](docs/adr/README.md).
+All 15 are indexed in [docs/adr/](docs/adr/README.md).
 
 ## Development
 
