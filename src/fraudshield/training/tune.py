@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -116,7 +117,17 @@ def tune_lgbm(
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=seed))
-    study.optimize(objective, n_trials=n_trials, timeout=timeout_s)
+    started = time.monotonic()
+
+    def progress(study: optuna.Study, trial: optuna.trial.FrozenTrial) -> None:
+        # one line per trial: a long tuning run otherwise prints nothing for hours
+        elapsed = time.monotonic() - started
+        done = len(study.trials)
+        eta = elapsed / done * (n_trials - done) if done else 0.0
+        log.info("trial %d/%d: CV PR-AUC %.4f (best %.4f), %.0f min elapsed, ~%.0f min left",
+                 done, n_trials, trial.value or 0.0, study.best_value, elapsed / 60, eta / 60)  # fmt: skip
+
+    study.optimize(objective, n_trials=n_trials, timeout=timeout_s, callbacks=[progress])
     best = study.best_trial
     return TuneResult(
         params=dict(best.params),
