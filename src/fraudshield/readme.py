@@ -126,6 +126,17 @@ def ops_rows(reports: Path) -> list[Row]:
         out.append(Row("Monitoring", "Drift demo (injected fraud ring): detection",
                        ", ".join(bits) + (" → retrain triggered" if d.get("should_retrain") else ""),
                        "reports/drift/demo-summary.md"))  # fmt: skip
+    real = _load(reports / "drift-ieee_cis" / "daily.json")
+    if real is not None:
+        fired = [d for d in real["days"] if d["triggers"]]
+        kinds: dict[str, int] = {}
+        for d in fired:
+            for t in d["triggers"]:
+                kinds[t.split(":")[0]] = kinds.get(t.split(":")[0], 0) + 1
+        detail = ", ".join(f"{k} {v}" for k, v in sorted(kinds.items()))
+        out.append(Row("Monitoring", "Daily drift job on the real IEEE-CIS test window (no injection)",
+                       f"{len(fired)} of {len(real['days'])} days would retrain ({detail})",
+                       "reports/drift-ieee_cis/daily.md"))  # fmt: skip
     demo = _load(reports / "demo" / "demo-check.json")
     if demo is not None:
         out.append(Row("Deployment", "Single-container demo, peak memory",

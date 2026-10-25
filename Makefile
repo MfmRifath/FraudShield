@@ -287,6 +287,10 @@ drift-demo: up-all ## Normal replay, then fraud-ring drift -> drift job -> Drift
 		-e PREFECT_API_URL=http://prefect-server:4200/api fraudshield-test:dev \
 		sh -c 'uv sync --frozen -q && uv run --frozen python scripts/drift_demo.py'
 
+.PHONY: drift-real
+drift-real: ## The daily drift job on the IEEE-CIS champion's real test window -> reports/drift-ieee_cis
+	$(RUN) python scripts/drift_real.py
+
 .PHONY: loadtest-bundles
 loadtest-bundles: ## Production-sized synthetic bundles + payloads -> artifacts/loadtest (in Docker)
 	docker build -q -t fraudshield-test:dev -f infra/dev/Dockerfile.test infra/dev >/dev/null

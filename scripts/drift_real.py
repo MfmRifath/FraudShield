@@ -1,0 +1,145 @@
+"""The daily drift job on real IEEE-CIS traffic (``make drift-real``), no injected drift.
+
+Served features equal offline features (parity < 1e-6, checked by the promotion gate), so the
+champion's decisions on the real test window are reconstructed offline, in the Parquet sink's
+schema, and the unchanged detector (``monitoring.drift.detect_drift``) runs once per test day,
+as the daily Prefect job would: feature and score drift on that day vs the 7 days before;
+PR-AUC on the latest 7 days whose labels have matured (lagged 7 days) vs the 7 days before.
+
+Writes ``reports/drift-ieee_cis/daily.{json,md}``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import tempfile
+from datetime import UTC, datetime, time, timedelta
+from pathlib import Path
+from typing import Any
+
+import orjson
+import polars as pl
+
+from fraudshield.config import get_settings
+from fraudshield.model_bundle import ModelBundle
+from fraudshield.monitoring.drift import detect_drift, top_features
+from fraudshield.training.costs import CostConfig, decide
+from fraudshield.training.splits import assign_splits
+
+
+def served_log(
+    features: pl.DataFrame, bundle: ModelBundle, costs: CostConfig, cols: list[str]
+) -> pl.DataFrame:
+    """Decisions as the Parquet sink would have logged them for these events."""
+    p = bundle.predict_proba(features)
+    d = decide(p, features["amount"].to_numpy(), features["day"].to_numpy(), costs)
+    feats = [
+        orjson.dumps({c: r[c] for c in cols}).decode()
+        for r in features.select(cols).iter_rows(named=True)
+    ]
+    return pl.DataFrame({
+        "txn_id": features["txn_id"], "uid": features["uid"], "event_time": features["event_time"],
+        "amount": features["amount"], "decision": d.astype(str), "probability": p,
+        "features": feats,
+    })  # fmt: skip
+
+
+def run(args: argparse.Namespace) -> dict[str, Any]:
+    s = get_settings()
+    ds = s.datasets.ieee_cis
+    bundle = ModelBundle.load(args.bundle)
+    cols = top_features(bundle, s.monitoring.top_k_features)
+    feats = assign_splits(pl.read_parquet(args.features), ds.origin, ds.splits)
+    test_start = feats.filter(pl.col("split") == "test")["event_time"].min()
+    m = s.monitoring  # the log must cover the lagged PR-AUC reference window of the first day
+    history = max(m.reference_days, m.performance_lag_days + 2 * m.performance_days)
+    first = test_start - timedelta(days=history)  # type: ignore[operator]
+    window = feats.filter(pl.col("event_time") > first).sort("event_time")
+    log = served_log(window, bundle, CostConfig.load(s.paths.costs), cols)
+    labels = window.filter(pl.col("label").is_not_null()).select(
+        "txn_id", label=pl.col("label").cast(pl.Int8), label_available_time="label_available_time"
+    )
+    days = []
+    end_day = window["event_time"].max().date()  # type: ignore[union-attr]
+    day = test_start.date()  # type: ignore[union-attr]
+    with tempfile.TemporaryDirectory() as tmp:
+        while day <= end_day:
+            as_of = datetime.combine(day, time(23, 59, 59), tzinfo=UTC)  # end of that day
+            res = detect_drift(log, labels, bundle, s.monitoring, as_of=as_of, out_dir=Path(tmp))
+            pr = res.pr_auc or {}
+            days.append({
+                "day": day.isoformat(), "rows": res.rows, "drift_share": res.drift_share,
+                "score_psi": res.score_psi, "pr_auc_current": pr.get("current"),
+                "pr_auc_reference": pr.get("reference"), "pr_auc_drop": pr.get("relative_drop"),
+                "triggers": res.triggers, "skipped": res.skipped,
+            })  # fmt: skip
+            day += timedelta(days=1)
+    return {"model": bundle.spec.metadata.get("created_at"), "features": cols,
+            "thresholds": {"drift_share": s.monitoring.drift_share_threshold,
+                           "psi": s.monitoring.psi_threshold,
+                           "pr_auc_drop": s.monitoring.pr_auc_drop_threshold},
+            "days": days}  # fmt: skip
+
+
+def _f(v: Any, fmt: str) -> str:
+    return "-" if v is None else format(v, fmt)
+
+
+def to_markdown(r: dict[str, Any]) -> str:
+    t = r["thresholds"]
+    rows = "\n".join(
+        f"| {d['day']} | {d['rows']['current']:,} | {_f(d['drift_share'], '.0%')} | {_f(d['score_psi'], '.3f')} "
+        f"| {_f(d['pr_auc_current'], '.3f')} / {_f(d['pr_auc_reference'], '.3f')} | {_f(None if d['pr_auc_drop'] is None else -d['pr_auc_drop'], '+.0%')} | "
+        + ("; ".join(x.split(":")[0] for x in d["triggers"]) or "none") + " |"
+        for d in r["days"]
+    )  # fmt: skip
+    fired = [d for d in r["days"] if d["triggers"]]
+    kinds: dict[str, int] = {}
+    for d in fired:
+        for x in d["triggers"]:
+            kinds[x.split(":")[0]] = kinds.get(x.split(":")[0], 0) + 1
+    summary = (
+        ", ".join(f"{k} on {v} day(s)" for k, v in sorted(kinds.items())) or "no trigger fired"
+    )
+    return f"""# Daily drift job on real IEEE-CIS traffic
+
+Generated by `make drift-real` (`scripts/drift_real.py`). The IEEE-CIS champion's decisions on the
+real test window, reconstructed offline (served features = offline features, parity-checked),
+run through the unchanged daily drift detector: feature and score drift compare that day with the
+previous 7 days; PR-AUC compares the latest 7 days whose labels have matured (lagged 7 days, the
+maximum label delay) with the 7 days before. No drift was injected.
+
+Thresholds: drifted share of the top-20 features > {t["drift_share"]:.0%}, score PSI > {t["psi"]},
+matured PR-AUC drop > {t["pr_auc_drop"]:.0%}. **{len(fired)} of {len(r["days"])} days would have triggered
+retraining** ({summary}).
+
+| day | events | drifted features | score PSI | matured PR-AUC current / reference (lagged) | PR-AUC change | triggers |
+|---|---:|---:|---:|---|---:|---|
+{rows}
+
+Feature drift is measured on a single day (about 2,700 events), so it is noisy; the PR-AUC
+windows are a week each (about 700 frauds), but lagged by a week, so a performance drop shows up
+seven days after it starts.
+"""
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument(
+        "--features", type=Path, default=Path("data/processed/ieee_cis/features.parquet")
+    )
+    p.add_argument("--bundle", type=Path, default=Path("artifacts/ieee_cis/bundle"))
+    p.add_argument("--out", type=Path, default=Path("reports/drift-ieee_cis"))
+    args = p.parse_args()
+    r = run(args)
+    args.out.mkdir(parents=True, exist_ok=True)
+    (args.out / "daily.json").write_text(json.dumps(r, indent=1, default=str) + "\n")
+    (args.out / "daily.md").write_text(to_markdown(r))
+    print(to_markdown(r))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
