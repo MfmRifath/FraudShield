@@ -116,8 +116,12 @@ def model_info(bundle_dir: Path) -> dict[str, Any]:
     leaves = [
         int(line.split("=", 1)[1]) for line in text.splitlines() if line.startswith("num_leaves=")
     ]
+    meta = spec["metadata"]
     return {
-        "model_version": spec["metadata"].get("model_version"),
+        "model_version": meta.get("model_version"),
+        "dataset": meta.get("dataset"),
+        "created_at": meta.get("created_at"),
+        "git_sha": meta.get("git_sha"),
         "trees_full": len(leaves),
         "mean_leaves_per_tree": round(sum(leaves) / len(leaves), 1) if leaves else None,
         "features_full": len(spec["full"]["feature_names"]),
@@ -173,6 +177,24 @@ def _ms(v: float | None) -> str:
     return "-" if v is None else f"{v:.1f}"
 
 
+def _synthetic(m: dict[str, Any]) -> bool:
+    return m.get("dataset") == "synthetic" or str(m.get("model_version", "")).startswith(
+        "synthetic"
+    )
+
+
+def _model_label(m: dict[str, Any]) -> str:
+    if _synthetic(m) or m.get("dataset") is None:
+        return f"`{m.get('model_version')}`"
+    return f"the trained `{m['dataset']}` model (trained {m.get('created_at')}, git `{m.get('git_sha')}`)"
+
+
+def _model_note(m: dict[str, Any]) -> str:
+    if _synthetic(m):
+        return "A *synthetic* bundle of production-like size: it measures the serving path, not model quality."
+    return "Payloads are that dataset's held-out test window, as served."
+
+
 def to_markdown(r: dict[str, Any]) -> str:
     c, e, m = r["config"], r["environment"], r["model"] or {}
     lines = [
@@ -185,10 +207,9 @@ def to_markdown(r: dict[str, Any]) -> str:
         f"**{c['users'] * c['rps_per_user']:.0f} req/s target**, {c['duration_s']} s per scenario "
         f"after a {c['warmup_s']} s warm-up. {round(c['known_share'] * 100)} % of requests come "
         "from returning cards, the rest from never-seen cards; the API stamps server time.",
-        f"- **Model:** `{m.get('model_version')}`, {m.get('trees_full')} trees "
+        f"- **Model:** {_model_label(m)}, {m.get('trees_full')} trees "
         f"(mean {m.get('mean_leaves_per_tree')} leaves/tree), {m.get('features_full')} features. "
-        "A *synthetic* bundle of production-like size: it measures the serving path, not model "
-        "quality.",
+        + _model_note(m),
         "- **System under test:** the compose `core` stack (API: 1 uvicorn worker, 768 MiB limit; "
         "Redis feature store; Kafka publishing; processor and shadow scorer consuming).",
         f"- **Machine:** {e.get('host_system')} {e.get('host_machine')} host, Docker "

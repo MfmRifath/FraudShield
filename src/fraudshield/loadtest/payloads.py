@@ -22,6 +22,19 @@ def write_payloads(window: pl.DataFrame, path: Path) -> int:
     return window.height
 
 
+def write_test_window_payloads(dataset: str, path: Path) -> int:
+    """The dataset's test split (canonical rows, as served) -> ``/score`` bodies."""
+    from fraudshield.config import get_settings
+    from fraudshield.pipeline import DatasetPaths
+    from fraudshield.training.splits import assign_splits
+
+    s = get_settings()
+    ds = s.datasets.get(dataset)  # type: ignore[arg-type]
+    canon = pl.read_parquet(DatasetPaths.of(s, dataset).canonical)  # type: ignore[arg-type]
+    test = assign_splits(canon, ds.origin, ds.splits).filter(pl.col("split") == "test")
+    return write_payloads(test.drop("day", "split"), path)
+
+
 def read_payloads(path: Path) -> list[dict[str, Any]]:
     return [orjson.loads(line) for line in path.read_bytes().splitlines() if line.strip()]
 

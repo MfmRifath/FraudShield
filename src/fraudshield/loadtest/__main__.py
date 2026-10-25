@@ -1,4 +1,4 @@
-"""``python -m fraudshield.loadtest {run,report}`` (the stack must be up; see ``make loadtest``)."""
+"""``python -m fraudshield.loadtest {payloads,run,report}`` (``run`` needs the stack; ``make loadtest``)."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import logging
 import sys
 from pathlib import Path
 
+from fraudshield.loadtest.payloads import write_test_window_payloads
 from fraudshield.loadtest.report import write_report
 from fraudshield.loadtest.runner import RunConfig, run_all
 from fraudshield.loadtest.scenarios import SCENARIOS, by_name
@@ -29,19 +30,31 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--run-id", default=None, help="prefix for cards/txns (default: timestamp)")
     run.add_argument("--out", type=Path, default=d.out_dir)
     run.add_argument("--metrics-url", default=d.metrics_url)
+    run.add_argument("--payloads", default=d.payloads, help="repo-relative JSONL of /score bodies")
+    run.add_argument(
+        "--bundle-dir", default=d.bundle_dir, help="the served bundle (for the report)"
+    )
     run.add_argument("--no-charts", action="store_true")
+    pay = sub.add_parser("payloads", help="a dataset's test window -> /score bodies (JSONL)")
+    pay.add_argument("--dataset", required=True, choices=["ieee_cis", "sparkov"])
+    pay.add_argument("--out", type=Path, required=True)
     rep = sub.add_parser("report", help="rebuild report.md / results.json / charts from raw/")
     rep.add_argument("--out", type=Path, default=d.out_dir)
     rep.add_argument("--no-charts", action="store_true")
     args = p.parse_args(argv)
 
+    if args.cmd == "payloads":
+        n = write_test_window_payloads(args.dataset, args.out)
+        print(f"{n:,} payloads -> {args.out}")
+        return 0
     if args.cmd == "run":
         import time
 
         cfg = RunConfig(
             users=args.users, rps_per_user=args.rps_per_user, duration_s=args.duration,
             warmup_s=args.warmup, run_id=args.run_id or f"lt{int(time.time())}",
-            out_dir=args.out, metrics_url=args.metrics_url,
+            out_dir=args.out, metrics_url=args.metrics_url, payloads=args.payloads,
+            bundle_dir=args.bundle_dir,
         )  # fmt: skip
         run_all(cfg, by_name(args.scenario))
     r = write_report(args.out, charts=not args.no_charts)

@@ -185,8 +185,9 @@ def test_report_from_raw_files(tmp_path: Path) -> None:
     assert killed["server"]["fallbacks"] == {"feature_store_error": 1000.0}
     assert killed["recovery_s"] is not None
     assert killed["recovery_s"] <= 2
-    assert r["model"] == {"model_version": "syn-500x63", "trees_full": 2,
-                          "mean_leaves_per_tree": 47.0, "features_full": 2}  # fmt: skip
+    assert r["model"] == {"model_version": "syn-500x63", "dataset": None, "created_at": None,
+                          "git_sha": None, "trees_full": 2, "mean_leaves_per_tree": 47.0,
+                          "features_full": 2}  # fmt: skip
     md = (tmp_path / "report.md").read_text()
     assert "**50 req/s target**" in md
     assert "| normal | 3,000 | 49.8 | 0 | 5.0 / 12.0 / 25.0 | 3.0 / 7.0 / 9.0 | 0.0 % |" in md

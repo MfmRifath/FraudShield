@@ -76,29 +76,39 @@ def serving_rows(reports: Path) -> list[Row]:
         out.append(Row("Serving", f"Single-request scoring p95, in-process ({m['trees_full']} trees)",
                        f"{_ms(lat['service']['p95'])} (degraded path {_ms(lat['service_degraded']['p95'])})",
                        "reports/benchmarks/serving_inprocess.md"))  # fmt: skip
-    lt = _load(reports / "loadtest" / "results.json")
-    if lt is not None:
-        sc = {s["name"]: s for s in lt["scenarios"]}
-        target = lt["config"]["users"] * lt["config"]["rps_per_user"]
-        src = "reports/loadtest/report.md"
-        if "normal" in sc:
-            n = sc["normal"]
-            cl, sv = n["client"], n["service"]
-            out.append(Row("Serving", f"Load test at {target:.0f} req/s (core stack, 3 reason codes)",
-                           f"{cl['rps']:.1f} req/s, {cl['failures']:,.0f} failed, p95 {_ms(cl['p95_ms'])} "
-                           f"client / {_ms(sv['p95_ms'])} service", src))  # fmt: skip
-            share = n.get("server", {}).get("fallback_share")
-            if share is not None:
-                out.append(Row("Serving", "Requests on a fallback path under that load",
-                               f"{share:.1%}", src))  # fmt: skip
-        if "redis_killed" in sc:
-            k = sc["redis_killed"]
-            rec = k.get("recovery_s")
-            out.append(Row("Resilience", "Redis killed mid-load",
-                           f"{(k['client'] or {}).get('failures', 0):,.0f} failed requests; "
-                           + ("degraded scoring, recovered in "
-                              f"{rec:.0f} s after restart" if rec is not None else "not recovered"),
-                           src))  # fmt: skip
+    # the real champion first (when its report exists), then the synthetic production-sized model
+    for sub, model in (
+        ("loadtest-ieee_cis", "IEEE-CIS champion"),
+        ("loadtest", "synthetic 500x63 model"),
+    ):
+        lt = _load(reports / sub / "results.json")
+        if lt is not None:
+            out += _loadtest_rows(lt, f"reports/{sub}/report.md", model)
+    return out
+
+
+def _loadtest_rows(lt: dict[str, Any], src: str, model: str) -> list[Row]:
+    out = []
+    sc = {s["name"]: s for s in lt["scenarios"]}
+    target = lt["config"]["users"] * lt["config"]["rps_per_user"]
+    if "normal" in sc:
+        n = sc["normal"]
+        cl, sv = n["client"], n["service"]
+        out.append(Row("Serving", f"Load test, {model}, {target:.0f} req/s target (3 reason codes)",
+                       f"{cl['rps']:.1f} req/s, {cl['failures']:,.0f} failed, p95 {_ms(cl['p95_ms'])} "
+                       f"client / {_ms(sv['p95_ms'])} service", src))  # fmt: skip
+        share = n.get("server", {}).get("fallback_share")
+        if share is not None:
+            out.append(Row("Serving", f"Requests on a fallback path under that load ({model})",
+                           f"{share:.1%}", src))  # fmt: skip
+    if "redis_killed" in sc:
+        k = sc["redis_killed"]
+        rec = k.get("recovery_s")
+        out.append(Row("Resilience", f"Redis killed mid-load ({model})",
+                       f"{(k['client'] or {}).get('failures', 0):,.0f} failed requests; "
+                       + ("degraded scoring, recovered in "
+                          f"{rec:.0f} s after restart" if rec is not None else "not recovered"),
+                       src))  # fmt: skip
     return out
 
 

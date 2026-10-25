@@ -286,11 +286,20 @@ loadtest-bundles: ## Production-sized synthetic bundles + payloads -> artifacts/
 	$(TEST_IMAGE_RUN) fraudshield-test:dev sh -c 'uv sync --frozen -q && uv run --frozen python -m fraudshield.devtools loadtest-bundles'
 
 LOADTEST_ARGS ?=
+# LOADTEST_SET: artifacts/<set>/bundle served by the stack; LOADTEST_DATASET: its feature set
+LOADTEST_SET ?= loadtest
+LOADTEST_DATASET ?= sparkov
 .PHONY: loadtest
 loadtest: ## Locust: normal / no reason codes / Redis killed -> reports/loadtest (LOADTEST_ARGS="--users 20 ...")
-	@test -f artifacts/loadtest/bundle/bundle.json || $(MAKE) loadtest-bundles
+	@test "$(LOADTEST_SET)" != loadtest || test -f artifacts/loadtest/bundle/bundle.json || $(MAKE) loadtest-bundles
 	docker build -q -t fraudshield-test:dev -f infra/dev/Dockerfile.test infra/dev >/dev/null
 	$(TEST_IMAGE_RUN) fraudshield-test:dev uv sync --frozen -q  # venv volume used by the Locust container
-	FS_BUNDLE_SET=loadtest $(MAKE) up
+	FS_BUNDLE_SET=$(LOADTEST_SET) FS_DATASET=$(LOADTEST_DATASET) $(MAKE) up
 	$(RUN) python -m fraudshield.loadtest run $(LOADTEST_ARGS)
-	@echo "The stack still serves the load-test bundle; 'make up' switches back to the dev bundle."
+	@echo "The stack still serves artifacts/$(LOADTEST_SET); 'make up' switches back to the dev bundle."
+
+.PHONY: loadtest-ieee
+loadtest-ieee: ## Load test the IEEE-CIS champion with its real test window -> reports/loadtest-ieee_cis
+	@test -f artifacts/ieee_cis/bundle/bundle.json || { echo "train IEEE-CIS first (make train DATASET=ieee_cis)" >&2; exit 1; }
+	$(RUN) python -m fraudshield.loadtest payloads --dataset ieee_cis --out artifacts/ieee_cis/payloads.jsonl
+	$(MAKE) loadtest LOADTEST_SET=ieee_cis LOADTEST_DATASET=ieee_cis LOADTEST_ARGS="--payloads artifacts/ieee_cis/payloads.jsonl --bundle-dir artifacts/ieee_cis/bundle --out reports/loadtest-ieee_cis $(LOADTEST_ARGS)"
