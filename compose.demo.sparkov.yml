@@ -1,0 +1,13 @@
+# The demo with the trained Sparkov champion and a slice of its test window (make demo-sparkov):
+#   docker compose -f compose.demo.yml -f compose.demo.sparkov.yml up -d --build --wait
+# Needs artifacts/sparkov/bundle (make train DATASET=sparkov) and the window slice
+# (python -m fraudshield.demo window). Without them, use plain compose.demo.yml.
+services:
+  demo:
+    volumes:
+      - ./artifacts/sparkov/bundle:/app/artifacts/sparkov:ro
+      - ./data/processed/sparkov/demo_window.parquet:/app/data/demo_window.parquet:ro
+    environment:
+      FRAUDSHIELD_SERVING__BUNDLE_DIR: /app/artifacts/sparkov
+      FRAUDSHIELD_SERVING__CHALLENGER_BUNDLE_DIR: /app/artifacts/sparkov
+      FRAUDSHIELD_DEMO__WINDOW: /app/data/demo_window.parquet

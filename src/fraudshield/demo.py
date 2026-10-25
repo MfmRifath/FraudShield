@@ -16,11 +16,14 @@ buffer), so it runs indefinitely in well under 1 GB (``make demo-check``).
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import polars as pl
@@ -130,3 +133,39 @@ async def _replay_logged(api: FastAPI, settings: Settings) -> None:
         raise
     except Exception:  # keep serving the API and UI even if the replayer dies
         log.exception("demo replay stopped")
+
+
+def write_demo_window(dataset: str, max_rows: int, out: Path) -> int:
+    """The first ``max_rows`` events of a dataset's test window, for ``demo.window``.
+
+    The demo keeps its window in memory, so it is a slice: the whole Sparkov test split would
+    not fit the 1 GB budget.
+    """
+    from fraudshield.pipeline import DatasetPaths
+    from fraudshield.training.splits import assign_splits
+
+    s = get_settings()
+    ds = s.datasets.get(dataset)  # type: ignore[arg-type]
+    canon = pl.read_parquet(DatasetPaths.of(s, dataset).canonical)  # type: ignore[arg-type]
+    test = assign_splits(canon, ds.origin, ds.splits).filter(pl.col("split") == "test")
+    window = test.drop("day", "split").sort("event_time", "txn_id").head(max_rows)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    window.write_parquet(out)
+    return window.height
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="python -m fraudshield.demo")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    w = sub.add_parser("window", help="write a test-window slice for the demo replayer")
+    w.add_argument("--dataset", default="sparkov", choices=["ieee_cis", "sparkov"])
+    w.add_argument("--max-rows", type=int, default=20_000)
+    w.add_argument("--out", type=Path, default=Path("data/processed/sparkov/demo_window.parquet"))
+    args = p.parse_args(argv)
+    n = write_demo_window(args.dataset, args.max_rows, args.out)
+    print(f"{n:,} events -> {args.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

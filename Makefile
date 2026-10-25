@@ -259,6 +259,13 @@ demo: ## ONE container: API + in-process replayer + in-memory stores + UI -> htt
 	$(DEMO_COMPOSE) up -d --build --wait
 	@echo "FraudShield demo: http://localhost:$${FS_DEMO_PORT:-8088}  (API under /api; stop: make demo-down)"
 
+.PHONY: demo-sparkov
+demo-sparkov: ## The demo with the trained Sparkov champion and its real test window
+	@test -f artifacts/sparkov/bundle/bundle.json || { echo "train Sparkov first (make train DATASET=sparkov)" >&2; exit 1; }
+	@test -f data/processed/sparkov/demo_window.parquet || $(RUN) python -m fraudshield.demo window
+	$(DEMO_COMPOSE) -f compose.demo.sparkov.yml up -d --build --wait
+	@echo "FraudShield demo (Sparkov champion): http://localhost:$${FS_DEMO_PORT:-8088}"
+
 .PHONY: demo-down
 demo-down: ## Stop the demo container
 	$(DEMO_COMPOSE) down
