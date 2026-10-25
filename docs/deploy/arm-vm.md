@@ -31,7 +31,7 @@ sudo netfilter-persistent save
 
 ```bash
 sudo mkdir -p /opt/fraudshield && sudo chown "$USER" /opt/fraudshield
-git clone https://github.com/<owner>/fraudshield.git /opt/fraudshield && cd /opt/fraudshield
+git clone https://github.com/MfmRifath/FraudShield.git /opt/fraudshield && cd /opt/fraudshield
 cp infra/deploy/env.example .env && chmod 600 .env
 ```
 
@@ -43,7 +43,7 @@ Fill in `.env`:
 | `FS_UI_USER`, `FS_UI_PASSWORD_HASH` | analyst login. Hash: `docker run --rm caddy:2.11.6-alpine caddy hash-password --plaintext '…'`, with every `$` doubled in `.env` |
 | `FS_ADMIN_TOKEN` | `openssl rand -hex 32`: guards `/admin/*` (never exposed by Caddy) |
 | `FS_PG_PASSWORD` | a real password, set **before** the first start (Postgres stores it on first init) |
-| `FS_IMAGE_PREFIX`, `FS_TAG` | `ghcr.io/<owner>/` and `latest` (or a commit SHA) |
+| `FS_IMAGE_PREFIX`, `FS_TAG` | `ghcr.io/mfmrifath/` and `latest` (or a commit SHA) |
 | `FS_CASE_STORE=postgres`, `FS_MODEL_SOURCE=mlflow` | cases in Postgres; serve `models:/fraudshield@champion` |
 
 If the GHCR packages are private, log in once with a read-only token: `echo $TOKEN | docker login ghcr.io -u <user> --password-stdin`.
@@ -78,7 +78,7 @@ ssh -N -L 3000:localhost:3000 -L 4200:localhost:4200 -L 5050:localhost:5050 \
 
 ## 5. Continuous delivery
 
-`cd.yml` pushes `ghcr.io/<owner>/fraudshield-{api,trainer,demo,ui,mlflow}:<sha>` on every push to `main`. To have it deploy too, set these in the GitHub repository settings:
+`cd.yml` pushes `ghcr.io/mfmrifath/fraudshield-{api,trainer,demo,ui,mlflow}:<sha>` on every push to `main`. To have it deploy too, set these in the GitHub repository settings:
 
 | Kind | Name | Value |
 |---|---|---|

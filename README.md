@@ -41,7 +41,7 @@ You need **Docker** (Docker Desktop, or Engine with Compose v2.24+), about 4 GB 
 
 <!-- quickstart:start -->
 ```bash
-git clone https://github.com/<owner>/fraudshield.git && cd fraudshield
+git clone https://github.com/MfmRifath/FraudShield.git && cd FraudShield
 docker compose -f compose.demo.yml up -d --build --wait
 ```
 <!-- quickstart:end -->

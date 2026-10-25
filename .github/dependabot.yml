@@ -1,5 +1,8 @@
 # Weekly update PRs for every pinned dependency. ADR-0002: pins stay exact, and a release must be
 # at least 14 days old before it is proposed (cooldown), as a supply-chain margin.
+# Runtime lines are pinned on purpose (Python 3.12, uv 0.12, Node 24): moving them is a
+# deliberate change with its own ADR, not a weekly bump. In Docker tags 3.12 -> 3.14 and
+# 0.12 -> 0.13 count as *minor* updates, hence the minor ignores.
 version: 2
 updates:
   - package-ecosystem: uv
@@ -14,10 +17,20 @@ updates:
     schedule: { interval: weekly, day: monday }
     cooldown: { default-days: 14 }
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "@types/node"  # tracks the Node 24 runtime
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directories: [/, /ui, /infra/mlflow, /infra/dev]
     schedule: { interval: weekly, day: monday }
     cooldown: { default-days: 14 }
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: astral-sh/uv
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker-compose
     directory: /
     schedule: { interval: weekly, day: monday }

@@ -96,7 +96,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     base = f"http://localhost:{args.port}"
     work = Path(tempfile.mkdtemp(prefix="fs-quickstart-"))
     timings: dict[str, float] = {}
-    clone = work / "fraudshield"
+    m = re.search(r"git clone (?:--\S+ )*\S+ (\S+)", localise(cmds, repo)[0])
+    clone = work / (m.group(1) if m else "fraudshield")  # the directory the README's clone creates
     try:
         # the README's own clone step comes first; build cold in that clone, then run the rest
         clone_cmd, rest = localise(cmds, repo)[0], localise(cmds, repo)[1:]

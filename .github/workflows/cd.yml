@@ -42,10 +42,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - id: owner  # image names must be lowercase; the GitHub owner may not be
+        run: echo "lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
         with:
-          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+          images: ghcr.io/${{ steps.owner.outputs.lc }}/${{ matrix.name }}
           tags: |
             type=sha,format=long,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
@@ -76,9 +78,9 @@ jobs:
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
           COMPOSE_ARGS: ${{ vars.DEPLOY_COMPOSE_ARGS }}
-          PREFIX: ghcr.io/${{ github.repository_owner }}/
           TAG: ${{ github.sha }}
         run: |
+          PREFIX="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/"  # lowercase, as pushed by the images job
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts  # pinned host key: no blind trust

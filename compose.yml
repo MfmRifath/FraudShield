@@ -4,7 +4,7 @@
 #   make up-all     -> + profile "monitoring": prometheus (:9090), grafana (:3000)
 #   make up-ui      -> + profile "ui": analyst UI (nginx :5180; /api proxied to the API)
 # Every service has a healthcheck and a memory limit; all images are multi-arch (amd64/arm64).
-# Images: local builds by default; FS_IMAGE_PREFIX=ghcr.io/<owner>/ FS_TAG=<sha> pulls the CD images
+# Images: local builds by default; FS_IMAGE_PREFIX=ghcr.io/mfmrifath/ FS_TAG=<sha> pulls the CD images
 # instead (docker compose pull; see docs/deploy/arm-vm.md).
 # Host ports are overridable: FS_KAFKA_PORT, FS_REDIS_PORT (6380), FS_MLFLOW_PORT (5050; macOS AirPlay
 # holds 5000), FS_PG_PORT (5433), FS_PREFECT_PORT, FS_API_PORT, FS_CONSOLE_PORT, ...

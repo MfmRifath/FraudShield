@@ -114,10 +114,10 @@ The volume `pg-data` holds cases, labels, audit, MLflow and Prefect metadata. ML
 
 ### 5.7 Deploy a new version
 
-CD builds images on every push to `main` (`ghcr.io/<owner>/fraudshield-*:<sha>`) and, when configured, deploys over SSH. To deploy or roll back by hand:
+CD builds images on every push to `main` (`ghcr.io/mfmrifath/fraudshield-*:<sha>`) and, when configured, deploys over SSH. To deploy or roll back by hand:
 
 ```bash
-export FS_IMAGE_PREFIX=ghcr.io/<owner>/ FS_TAG=<sha>
+export FS_IMAGE_PREFIX=ghcr.io/mfmrifath/ FS_TAG=<sha>
 docker compose --profile core --profile mlops pull && docker compose --profile core --profile mlops up -d --wait --no-build
 ```
 
