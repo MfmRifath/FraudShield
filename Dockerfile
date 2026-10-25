@@ -5,7 +5,7 @@
 
 # The uv cache mounts use sharing=locked: the build and build-trainer stages run in parallel, and
 # with a shared cache one uv waited on the other's download lock until it timed out (300 s).
-FROM ghcr.io/astral-sh/uv:0.12.23-python3.12-trixie-slim AS build
+FROM ghcr.io/astral-sh/uv:0.12.24-python3.12-trixie-slim AS build
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv sync --frozen --no-dev --no-default-groups --no-editable
 
 # ---------------------------------------------------------------- trainer (prefect worker)
-FROM ghcr.io/astral-sh/uv:0.12.23-python3.12-trixie-slim AS build-trainer
+FROM ghcr.io/astral-sh/uv:0.12.24-python3.12-trixie-slim AS build-trainer
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
