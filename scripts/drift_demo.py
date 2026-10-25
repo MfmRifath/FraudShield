@@ -97,7 +97,8 @@ def main() -> int:
     from prefect.deployments import run_deployment
 
     run = cast(FlowRun, run_deployment("drift/on-demand", timeout=1800,
-                                       parameters={"namespace": ns, "reference_days": 7, "current_days": 7}))  # fmt: skip
+                                       parameters={"namespace": ns, "reference_days": 7, "current_days": 7,
+                                                   "performance_days": 7, "performance_lag_days": 0}))  # fmt: skip
     state = run.state.type if run.state else None
     print(f"[3] drift flow run {run.name}: {state}")
     result = json.loads((REPORT / "latest.json").read_text())

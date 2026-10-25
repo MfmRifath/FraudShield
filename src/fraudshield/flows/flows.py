@@ -134,6 +134,8 @@ def drift_flow(
     current_days: float | None = None,
     retrain: bool = True,
     namespace: str | None = None,
+    performance_days: float | None = None,
+    performance_lag_days: float | None = None,
 ) -> dict[str, Any]:
     """Daily drift check over the served-traffic log; triggers the configured retrain flow.
 
@@ -158,6 +160,7 @@ def drift_flow(
     res = detect_drift(
         decisions, labels, mm.champion.bundle, s.monitoring, as_of=as_of,
         out_dir=s.monitoring.report_dir, reference_days=reference_days, current_days=current_days,
+        performance_days=performance_days, performance_lag_days=performance_lag_days,
     )  # fmt: skip
     logger.info(
         "drift: share=%s psi=%s triggers=%s skipped=%s",

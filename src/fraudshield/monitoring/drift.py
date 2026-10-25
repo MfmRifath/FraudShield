@@ -191,6 +191,8 @@ def detect_drift(
     out_dir: Path | None = None,
     reference_days: float | None = None,
     current_days: float | None = None,
+    performance_days: float | None = None,
+    performance_lag_days: float | None = None,
 ) -> DriftResult:
     if decisions.is_empty():
         raise ValueError("no served decisions logged yet")
@@ -224,12 +226,23 @@ def detect_drift(
         ref["probability"].drop_nulls().to_numpy(), cur["probability"].drop_nulls().to_numpy()
     )
     res.decision_mix = {"reference": decision_mix(ref), "current": decision_mix(cur)}
-    pr_ref = matured_pr_auc(ref, labels, end, cfg.min_label_positives)
-    pr_cur = matured_pr_auc(cur, labels, end, cfg.min_label_positives)
+    # performance: the latest window whose labels have matured vs the window before it
+    lag = cfg.performance_lag_days if performance_lag_days is None else performance_lag_days
+    pdays = cfg.performance_days if performance_days is None else performance_days
+    p_end = end - timedelta(days=lag)
+    p_cur_start, p_ref_start = p_end - timedelta(days=pdays), p_end - timedelta(days=2 * pdays)
+    p_cur = decisions.filter((t > p_cur_start) & (t <= p_end))
+    p_ref = decisions.filter((t > p_ref_start) & (t <= p_cur_start))
+    pr_ref = matured_pr_auc(p_ref, labels, end, cfg.min_label_positives)
+    pr_cur = matured_pr_auc(p_cur, labels, end, cfg.min_label_positives)
     res.pr_auc = {
         "reference": pr_ref[0],
         "current": pr_cur[0],
         "labelled": {"reference": pr_ref[1:], "current": pr_cur[1:]},
+        "windows": {
+            "reference": [p_ref_start.isoformat(), p_cur_start.isoformat()],
+            "current": [p_cur_start.isoformat(), p_end.isoformat()],
+        },
     }
 
     if share > cfg.drift_share_threshold:

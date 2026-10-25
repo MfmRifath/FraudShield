@@ -120,6 +120,8 @@ monitoring:
   current_days: 1
   min_rows: 200
   min_label_positives: 20
+  performance_days: 7       # PR-AUC windows (current and reference) ...
+  performance_lag_days: 7   # ... ending this long before now, so labels have matured
   report_dir: reports/drift
   retrain_flow: retrain-and-promote   # mlops-demo in the drift demo (synthetic, no real training)
   metrics_port: 9100

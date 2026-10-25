@@ -265,6 +265,10 @@ class MonitoringConfig(_Frozen):
     current_days: float = Field(default=1.0, gt=0)
     min_rows: int = Field(default=200, ge=10)
     min_label_positives: int = Field(default=20, ge=1)
+    # The matured-label PR-AUC check uses its own windows, shifted back so their labels have
+    # arrived: with a daily job, today's labels never have (the delay is >= 1 day).
+    performance_days: float = Field(default=7.0, gt=0)
+    performance_lag_days: float = Field(default=7.0, ge=0, description=">= the max label delay")
     report_dir: Path = Path("reports/drift")
     retrain_flow: Literal["retrain-and-promote", "mlops-demo", "none"] = "retrain-and-promote"
     metrics_port: int = Field(default=9100, ge=1, le=65535)

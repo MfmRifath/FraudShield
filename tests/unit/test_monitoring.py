@@ -304,3 +304,23 @@ def test_prometheus_scrapes_every_compose_service_with_metrics() -> None:
         assert svc in compose
         assert f"{svc}:9100" in targets
     assert "api:8000" in targets
+
+
+@pytest.mark.unit
+def test_daily_job_measures_performance_on_matured_labels(drift_setup: dict[str, Any]) -> None:
+    """Regression: with a 1-day current window no label had matured (delays are 1-7 days), so
+    the PR-AUC check was always skipped; it now uses windows lagged by the label delay."""
+    canon = synthetic_canonical(10_000, seed=0)
+    labels = canon.filter(pl.col("label").is_not_null()).select(
+        "txn_id", label=pl.col("label").cast(pl.Int8), label_available_time="label_available_time"
+    )
+    daily = MonitoringConfig(reference_days=7, current_days=1, min_rows=50, min_label_positives=5)
+    fresh = detect_drift(drift_setup["clean"], labels, drift_setup["bundle"], daily,
+                         performance_days=1, performance_lag_days=0)  # fmt: skip
+    assert fresh.pr_auc["current"] is None  # today's labels have not arrived yet
+    lagged = detect_drift(drift_setup["clean"], labels, drift_setup["bundle"], daily)
+    assert lagged.pr_auc["current"] is not None
+    assert lagged.pr_auc["reference"] is not None
+    assert not any("PR-AUC" in s for s in lagged.skipped)
+    end = drift_setup["clean"]["event_time"].max()
+    assert lagged.pr_auc["windows"]["current"][1] == (end - timedelta(days=7)).isoformat()
