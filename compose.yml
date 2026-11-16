@@ -336,7 +336,7 @@ services:
     mem_limit: 512m
 
   grafana:
-    image: grafana/grafana:13.2.4
+    image: grafana/grafana:13.3.0
     profiles: [monitoring]
     depends_on:
       prometheus: { condition: service_healthy }
