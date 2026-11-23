@@ -317,7 +317,7 @@ services:
 
   # ---------------------------------------------------------------- monitoring profile
   prometheus:
-    image: prom/prometheus:v3.15.1
+    image: prom/prometheus:v3.16.0
     profiles: [monitoring]
     command:
       - --config.file=/etc/prometheus/prometheus.yml
